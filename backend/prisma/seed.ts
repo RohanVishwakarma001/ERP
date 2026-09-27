@@ -25,9 +25,18 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PROD_SEED !== 'true') {
+    throw new Error(
+      'Refusing to run demo/seed data against a production environment. ' +
+        'This script creates accounts with a shared, known password and is intended for ' +
+        'local development or staging/UAT only. Set ALLOW_PROD_SEED=true to override deliberately.',
+    );
+  }
+
   console.log('🌱 Starting Comprehensive JBIT Campus ERP Database Seeding...');
 
-  const defaultPasswordHash = await bcrypt.hash('Jbit@2026', 10);
+  const seedPassword = process.env.SEED_DEFAULT_PASSWORD || 'Jbit@2026';
+  const defaultPasswordHash = await bcrypt.hash(seedPassword, 10);
 
   // ==========================================
   // 1. DEPARTMENTS

@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from '../common/decorators';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,17 +11,20 @@ export class HealthController {
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Check API, database, and telemetry node operational status' })
-  async check() {
-    let dbStatus = 'CONNECTED';
+  @ApiOperation({ summary: 'Check API and database operational status' })
+  async check(@Res({ passthrough: true }) res: Response) {
+    let dbStatus: 'CONNECTED' | 'OFFLINE' = 'CONNECTED';
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      dbStatus = 'OFFLINE_OR_PENDING_MIGRATION';
+      dbStatus = 'OFFLINE';
     }
 
+    const healthy = dbStatus === 'CONNECTED';
+    res.status(healthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE);
+
     return {
-      status: 'OPERATIONAL',
+      status: healthy ? 'OPERATIONAL' : 'DEGRADED',
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       institution: 'JB Institute of Technology, Dehradun',
@@ -28,9 +32,6 @@ export class HealthController {
       services: {
         api: 'UP',
         database: dbStatus,
-        redis: 'UP (BullMQ Ready)',
-        utuCloudNode: 'ONLINE (Sync Active)',
-        qrAttendanceEngine: 'ACTIVE',
       },
     };
   }

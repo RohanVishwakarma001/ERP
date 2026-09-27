@@ -75,6 +75,24 @@ model RefreshToken {
   @@index([userId])
 }
 
+enum OtpPurpose {
+  PASSWORD_RESET
+  LOGIN_2FA
+}
+
+model OtpToken {
+  id         String     @id @default(uuid())
+  identifier String
+  purpose    OtpPurpose
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  @@index([identifier, purpose])
+}
+
 model Permission {
   id          String           @id @default(uuid())
   code        String           @unique

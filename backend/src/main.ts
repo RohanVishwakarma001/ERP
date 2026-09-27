@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -9,24 +10,33 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 async function bootstrap() {
   const logger = new Logger('JBIT-Bootstrap');
   const app = await NestFactory.create(AppModule);
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  app.use(helmet());
 
   // Global API Prefix
   app.setGlobalPrefix('api/v1');
 
-  // CORS Configuration
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    process.env.WEB_URL || 'http://localhost:3000',
-  ];
+  // CORS Configuration — strict allowlist, no wildcard fallback.
+  const allowedOrigins = new Set(
+    [process.env.WEB_URL, ...(process.env.CORS_ORIGINS?.split(',') ?? [])]
+      .map((o) => o?.trim())
+      .filter((o): o is string => Boolean(o)),
+  );
+
+  if (!isProduction) {
+    allowedOrigins.add('http://localhost:3000');
+    allowedOrigins.add('http://127.0.0.1:3000');
+  }
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow mobile apps without origin, local dev, or allowed web origins
-      if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+      // Requests with no Origin header (native mobile apps, curl, server-to-server) are allowed;
+      // browser-origin requests must match the configured allowlist exactly.
+      if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // Dev permissive
+        callback(new Error(`Origin ${origin} is not permitted by CORS policy.`), false);
       }
     },
     credentials: true,
@@ -39,14 +49,16 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
     }),
   );
 
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
 
-  // Swagger OpenAPI Documentation
+  // Swagger OpenAPI Documentation — never exposed in production unless explicitly opted in.
+  const swaggerEnabled = !isProduction || process.env.ENABLE_SWAGGER === 'true';
+  if (swaggerEnabled) {
   const config = new DocumentBuilder()
     .setTitle('JBIT Dehradun — Campus ERP Ecosystem API')
     .setDescription(
@@ -76,13 +88,14 @@ async function bootstrap() {
     .addTag('System Health', 'API operational status, database connectivity, and cloud node metrics')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
-    customSiteTitle: 'JBIT ERP — API Documentation',
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document, {
+      customSiteTitle: 'JBIT ERP — API Documentation',
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+  }
 
   const port = process.env.PORT || 8000;
   await app.listen(port);
@@ -90,7 +103,9 @@ async function bootstrap() {
   logger.log(`==================================================================`);
   logger.log(`🎓 JBIT Campus ERP Backend Server started successfully on port ${port}`);
   logger.log(`📡 API Base URL:       http://localhost:${port}/api/v1`);
-  logger.log(`📚 Swagger OpenAPI UI: http://localhost:${port}/api/docs`);
+  if (swaggerEnabled) {
+    logger.log(`📚 Swagger OpenAPI UI: http://localhost:${port}/api/docs`);
+  }
   logger.log(`==================================================================`);
 }
 

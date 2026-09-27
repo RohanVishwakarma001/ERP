@@ -22,43 +22,36 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_ACCESS_SECRET', 'jbit_super_secure_access_secret_token_2026_utu_node'),
+      secretOrKey: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
     });
   }
 
   async validate(payload: JwtPayload) {
+    let user;
     try {
-      const user = await this.prisma.user.findUnique({
+      user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         include: {
           student: true,
           faculty: true,
         },
       });
-
-      if (user && user.status === 'ACTIVE' && !user.deletedAt) {
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          studentId: user.student?.id || payload.studentId,
-          facultyId: user.faculty?.id || payload.facultyId,
-          departmentId: user.student?.departmentId || user.faculty?.departmentId,
-          permissions: [],
-        };
-      }
     } catch {
-      // In development fallback if database table not yet populated or offline
+      throw new UnauthorizedException('Unable to verify session at this time.');
+    }
+
+    if (!user || user.status !== 'ACTIVE' || user.deletedAt) {
+      throw new UnauthorizedException('Account is no longer active.');
     }
 
     return {
-      id: payload.sub,
-      email: payload.email,
-      name: payload.name,
-      role: payload.role,
-      studentId: payload.studentId,
-      facultyId: payload.facultyId,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      studentId: user.student?.id,
+      facultyId: user.faculty?.id,
+      departmentId: user.student?.departmentId || user.faculty?.departmentId,
       permissions: [],
     };
   }

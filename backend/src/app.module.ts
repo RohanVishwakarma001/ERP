@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import * as Joi from 'joi';
 import { PrismaModule } from './prisma/prisma.module';
+import { EmailModule } from './common/email/email.module';
 import { AuthModule } from './auth/auth.module';
 import { StudentsModule } from './students/students.module';
 import { FacultyModule } from './faculty/faculty.module';
@@ -33,7 +37,31 @@ import { WebSocketModule } from './websocket/websocket.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '.env.local'],
+      validationSchema: Joi.object({
+        NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+        PORT: Joi.number().default(8000),
+        DATABASE_URL: Joi.string().uri().required(),
+        DIRECT_URL: Joi.string().uri().optional(),
+        JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+        JWT_REFRESH_SECRET: Joi.string().min(32).required(),
+        JWT_ACCESS_EXPIRATION: Joi.string().default('15m'),
+        JWT_REFRESH_EXPIRATION: Joi.string().default('7d'),
+        WEB_URL: Joi.string().uri().required(),
+        MOBILE_APP_SCHEME: Joi.string().optional(),
+        CORS_ORIGINS: Joi.string().allow('').optional(),
+        ENABLE_SWAGGER: Joi.string().valid('true', 'false').optional(),
+      }).unknown(true),
+      validationOptions: {
+        abortEarly: false,
+      },
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: 100,
+      },
+    ]),
+    EmailModule,
     PrismaModule,
     WebSocketModule,
     AuthModule,
@@ -61,6 +89,12 @@ import { WebSocketModule } from './websocket/websocket.module';
     HealthModule,
     EventsModule,
     FeedbackModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}
