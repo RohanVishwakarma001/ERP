@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { Colors, Shadows, Spacing } from '@/constants/theme';
 import {
   BookOpen,
@@ -28,6 +29,7 @@ export function StudentAcademicsView() {
   const [gradeCard, setGradeCard] = useState<any>(null);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -54,16 +56,27 @@ export function StudentAcademicsView() {
   }, []);
 
   const handleAssignmentSubmit = async (assignmentId: string) => {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      multiple: false,
+    });
+    if (picked.canceled || !picked.assets?.[0]) return;
+
+    const file = picked.assets[0];
+    setSubmittingId(assignmentId);
     try {
-      await mobileStudentService.submitAssignment(
-        assignmentId,
-        'https://storage.jbitdoon.edu.in/submissions/assignment-pdf.pdf'
+      const uploaded = await mobileStudentService.uploadFile(
+        { uri: file.uri, name: file.name, mimeType: file.mimeType || 'application/octet-stream' },
+        'assignments'
       );
-      Alert.alert('Success', 'Assignment submitted and registered with academic department.');
+      await mobileStudentService.submitAssignment(assignmentId, uploaded.url);
+      Alert.alert('Success', `"${file.name}" submitted and registered with academic department.`);
       const updated = await mobileStudentService.getAssignments();
       setAssignments(Array.isArray(updated) ? updated : []);
     } catch (err: any) {
       Alert.alert('Error', err.response?.data?.message || 'Failed to submit assignment.');
+    } finally {
+      setSubmittingId(null);
     }
   };
 
@@ -224,16 +237,16 @@ export function StudentAcademicsView() {
                   <View
                     style={[
                       styles.statusPill,
-                      asn.status === 'SUBMITTED' ? styles.submittedPill : styles.pendingPill,
+                      asn.mySubmissionStatus === 'SUBMITTED' ? styles.submittedPill : styles.pendingPill,
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusPillText,
-                        asn.status === 'SUBMITTED' ? styles.submittedText : styles.pendingText,
+                        asn.mySubmissionStatus === 'SUBMITTED' ? styles.submittedText : styles.pendingText,
                       ]}
                     >
-                      {asn.status || 'PENDING'}
+                      {asn.mySubmissionStatus || 'PENDING'}
                     </Text>
                   </View>
                 </View>
@@ -248,13 +261,20 @@ export function StudentAcademicsView() {
                     </Text>
                   </View>
 
-                  {asn.status !== 'SUBMITTED' && (
+                  {asn.mySubmissionStatus !== 'SUBMITTED' && (
                     <TouchableOpacity
                       style={styles.uploadBtn}
                       onPress={() => handleAssignmentSubmit(asn.id)}
+                      disabled={submittingId === asn.id}
                     >
-                      <UploadCloud size={13} color="#FFFFFF" />
-                      <Text style={styles.uploadBtnText}>Submit Work</Text>
+                      {submittingId === asn.id ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <UploadCloud size={13} color="#FFFFFF" />
+                      )}
+                      <Text style={styles.uploadBtnText}>
+                        {submittingId === asn.id ? 'Uploading...' : 'Submit Work'}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>

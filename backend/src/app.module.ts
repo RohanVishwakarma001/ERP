@@ -5,6 +5,8 @@ import { APP_GUARD } from '@nestjs/core';
 import * as Joi from 'joi';
 import { PrismaModule } from './prisma/prisma.module';
 import { EmailModule } from './common/email/email.module';
+import { StorageModule } from './common/storage/storage.module';
+import { UploadsModule } from './uploads/uploads.module';
 import { AuthModule } from './auth/auth.module';
 import { StudentsModule } from './students/students.module';
 import { FacultyModule } from './faculty/faculty.module';
@@ -62,6 +64,7 @@ import { WebSocketModule } from './websocket/websocket.module';
       },
     ]),
     EmailModule,
+    StorageModule,
     PrismaModule,
     WebSocketModule,
     AuthModule,
@@ -72,6 +75,7 @@ import { WebSocketModule } from './websocket/websocket.module';
     AttendanceModule,
     ExaminationsModule,
     AssignmentsModule,
+    UploadsModule,
     MaterialsModule,
     FeesModule,
     NoticesModule,

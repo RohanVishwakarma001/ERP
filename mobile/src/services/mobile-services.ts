@@ -70,6 +70,28 @@ export const mobileStudentService = {
   },
 
   /**
+   * Upload a local file (picked via expo-document-picker/expo-image-picker) to cloud
+   * storage and return its real, publicly accessible URL.
+   */
+  async uploadFile(
+    file: { uri: string; name: string; mimeType: string },
+    folder: string
+  ): Promise<{ url: string; publicId: string }> {
+    const formData = new FormData();
+    // React Native's FormData accepts this {uri, name, type} shape directly.
+    formData.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType,
+    } as unknown as Blob);
+
+    const res = await apiClient.post(`/uploads?folder=${encodeURIComponent(folder)}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  /**
    * Real student QR attendance verification with geofencing and anti-proxy checks
    */
   async verifyQrAttendance(qrPayload: string, coords?: { lat?: number; lng?: number }) {

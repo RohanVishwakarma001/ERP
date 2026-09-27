@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 const MOCK_ASSIGNMENTS = [
@@ -34,7 +34,7 @@ const MOCK_ASSIGNMENTS = [
 export class AssignmentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(studentId?: string) {
     if (this.prisma.isConnected) {
       try {
         const assignments = await this.prisma.assignment.findMany({
@@ -59,6 +59,9 @@ export class AssignmentsService {
             submissionsCount: a.submissions.length,
             totalStudents: 60,
             status: a.status,
+            // Whether THIS student has submitted — distinct from `status`, which is the
+            // assignment's own publish state (PUBLISHED/DRAFT/CLOSED), not per-student.
+            mySubmissionStatus: studentId && a.submissions.some((s) => s.studentId === studentId) ? 'SUBMITTED' : 'PENDING',
           }));
         }
       } catch {
@@ -68,7 +71,7 @@ export class AssignmentsService {
     return MOCK_ASSIGNMENTS;
   }
 
-  async findById(id: string) {
+  async findById(id: string, studentId?: string) {
     if (this.prisma.isConnected) {
       try {
         const a = await this.prisma.assignment.findUnique({
@@ -92,6 +95,7 @@ export class AssignmentsService {
             submissionsCount: a.submissions.length,
             totalStudents: 60,
             status: a.status,
+            mySubmissionStatus: studentId && a.submissions.some((s) => s.studentId === studentId) ? 'SUBMITTED' : 'PENDING',
           };
         }
       } catch {
@@ -102,42 +106,49 @@ export class AssignmentsService {
   }
 
   async submitAssignment(assignmentId: string, studentId: string, fileUrl: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const student = await this.prisma.student.findFirst({
-          where: { OR: [{ id: studentId }, { rollNumber: studentId }] },
-        });
-
-        if (student) {
-          await this.prisma.assignmentSubmission.upsert({
-            where: {
-              assignmentId_studentId: {
-                assignmentId,
-                studentId: student.id,
-              },
-            },
-            update: {
-              fileUrl,
-              submittedAt: new Date(),
-            },
-            create: {
-              assignmentId,
-              studentId: student.id,
-              fileUrl,
-            },
-          });
-        }
-      } catch {
-        // Fallback
-      }
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException(
+        'Submission database is currently unreachable. Please try again shortly — this file was NOT submitted.',
+      );
     }
+
+    const assignment = await this.prisma.assignment.findUnique({ where: { id: assignmentId } });
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found.');
+    }
+    if (new Date() > assignment.deadline) {
+      throw new BadRequestException('The deadline for this assignment has passed.');
+    }
+
+    const student = await this.prisma.student.findUnique({ where: { id: studentId } });
+    if (!student) {
+      throw new BadRequestException('Student profile not found for this account.');
+    }
+
+    const submission = await this.prisma.assignmentSubmission.upsert({
+      where: {
+        assignmentId_studentId: {
+          assignmentId,
+          studentId: student.id,
+        },
+      },
+      update: {
+        fileUrl,
+        submittedAt: new Date(),
+      },
+      create: {
+        assignmentId,
+        studentId: student.id,
+        fileUrl,
+      },
+    });
 
     return {
       success: true,
-      message: 'Assignment submitted successfully before deadline.',
+      message: 'Assignment submitted successfully.',
       assignmentId,
-      studentId,
-      submittedAt: new Date().toISOString(),
+      studentId: student.id,
+      submittedAt: submission.submittedAt.toISOString(),
       status: 'SUBMITTED',
     };
   }
