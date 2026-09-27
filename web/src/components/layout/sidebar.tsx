@@ -10,11 +10,7 @@ import {
   GraduationCap,
   Users2,
   CalendarDays,
-  Grid3X3,
   CalendarCheck2,
-  ShieldCheck,
-  Ban,
-  Lock,
   Briefcase,
   Award,
   Wallet,
@@ -24,9 +20,6 @@ import {
   BellRing,
   HelpCircle,
   Bot,
-  KeyRound,
-  FileSpreadsheet,
-  Settings,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -52,163 +45,83 @@ interface NavSection {
   items: NavItem[];
 }
 
+// Every href below must correspond to a page that actually exists — no aspirational
+// links. Non-admin roles only see their own dashboard plus the specific admin
+// sub-pages their role is actually permitted into (see lib/roles.ts allowedPrefixes).
+function buildNavSections(currentRole: UserRole): NavSection[] {
+  if (currentRole === "ADMIN") {
+    return [
+      {
+        title: "Main",
+        items: [
+          { label: "Overview / Dashboard", href: "/admin/dashboard", icon: <LayoutDashboard className="w-[18px] h-[18px]" /> },
+        ],
+      },
+      {
+        title: "Academic Affairs",
+        items: [
+          { label: "Departments", href: "/admin/departments", icon: <Building2 className="w-[18px] h-[18px]" /> },
+          { label: "Programs & Courses", href: "/admin/courses", icon: <GraduationCap className="w-[18px] h-[18px]" /> },
+          { label: "Faculty Workload", href: "/admin/faculty", icon: <Users2 className="w-[18px] h-[18px]" /> },
+          { label: "Student Roster", href: "/admin/students", icon: <Users2 className="w-[18px] h-[18px]" /> },
+          { label: "TPC Placement Drive", href: "/admin/placement", icon: <Briefcase className="w-[18px] h-[18px]" /> },
+          { label: "Recruiter Scoring & LOI", href: "/admin/recruiter", icon: <Award className="w-[18px] h-[18px]" /> },
+        ],
+      },
+      {
+        title: "Scheduling & Operations",
+        items: [
+          { label: "Timetable Engine", href: "/admin/timetable", icon: <CalendarDays className="w-[18px] h-[18px]" /> },
+          { label: "Exam Seating & COE", href: "/admin/exams", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> },
+        ],
+      },
+      {
+        title: "Campus Infrastructure",
+        items: [
+          { label: "Fee Ledger & Accounts", href: "/admin/fees", icon: <Wallet className="w-[18px] h-[18px]" /> },
+          { label: "Central Library", href: "/admin/library", icon: <BookOpen className="w-[18px] h-[18px]" /> },
+          { label: "Hostels & Outpass", href: "/admin/hostel", icon: <Bed className="w-[18px] h-[18px]" /> },
+          { label: "Fleet & Transport", href: "/admin/transport", icon: <Bus className="w-[18px] h-[18px]" /> },
+          { label: "Campus Notices", href: "/admin/notices", icon: <BellRing className="w-[18px] h-[18px]" /> },
+          { label: "Grievances & Tickets", href: "/admin/complaints", icon: <HelpCircle className="w-[18px] h-[18px]" /> },
+        ],
+      },
+      {
+        title: "System & AI",
+        items: [
+          { label: "AI Campus Copilot", href: "/admin/ai-copilot", icon: <Bot className="w-[18px] h-[18px] text-cyan-600" />, badge: "Smart", badgeColor: "bg-cyan-600 text-white" },
+        ],
+      },
+    ];
+  }
+
+  const dashboardHref = `/${currentRole.toLowerCase()}/dashboard`;
+  const main: NavSection = {
+    title: "Main",
+    items: [{ label: "Overview / Dashboard", href: dashboardHref, icon: <LayoutDashboard className="w-[18px] h-[18px]" /> }],
+  };
+
+  const roleExtras: Partial<Record<UserRole, NavItem[]>> = {
+    HOD: [
+      { label: "Departments", href: "/admin/departments", icon: <Building2 className="w-[18px] h-[18px]" /> },
+      { label: "Faculty Workload", href: "/admin/faculty", icon: <Users2 className="w-[18px] h-[18px]" /> },
+    ],
+    ACCOUNTANT: [{ label: "Fee Ledger & Accounts", href: "/admin/fees", icon: <Wallet className="w-[18px] h-[18px]" /> }],
+    EXAM_OFFICER: [{ label: "Exam Seating & COE", href: "/admin/exams", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> }],
+    LIBRARIAN: [{ label: "Central Library", href: "/admin/library", icon: <BookOpen className="w-[18px] h-[18px]" /> }],
+    PLACEMENT_OFFICER: [{ label: "TPC Placement Drive", href: "/admin/placement", icon: <Briefcase className="w-[18px] h-[18px]" /> }],
+    HOSTEL_WARDEN: [{ label: "Hostels & Outpass", href: "/admin/hostel", icon: <Bed className="w-[18px] h-[18px]" /> }],
+    TRANSPORT_MANAGER: [{ label: "Fleet & Transport", href: "/admin/transport", icon: <Bus className="w-[18px] h-[18px]" /> }],
+    STUDENT: [{ label: "Attendance", href: "/student/attendance", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> }],
+  };
+
+  const extras = roleExtras[currentRole];
+  return extras ? [main, { title: "Access", items: extras }] : [main];
+}
+
 export function Sidebar({ currentRole = "ADMIN", isCollapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
-
-  const navSections: NavSection[] = [
-    {
-      title: "Main",
-      items: [
-        {
-          label: "Overview / Dashboard",
-          href: currentRole === "ADMIN" ? "/admin/dashboard" : `/${currentRole.toLowerCase()}/dashboard`,
-          icon: <LayoutDashboard className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-    {
-      title: "Academic Affairs",
-      items: [
-        {
-          label: "Departments",
-          href: "/admin/departments",
-          icon: <Building2 className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Programs & Courses",
-          href: "/admin/courses",
-          icon: <GraduationCap className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Faculty Workload",
-          href: "/admin/faculty",
-          icon: <Users2 className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Student Roster",
-          href: "/admin/students",
-          icon: <Users2 className="w-[18px] h-[18px]" />,
-          badge: "2,840",
-        },
-        {
-          label: "TPC Placement Drive",
-          href: "/admin/placement",
-          icon: <Briefcase className="w-[18px] h-[18px]" />,
-          badge: "Live 2",
-          badgeColor: "bg-emerald-500 text-white",
-        },
-        {
-          label: "Recruiter Scoring & LOI",
-          href: "/admin/recruiter",
-          icon: <Award className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-    {
-      title: "Scheduling & Operations",
-      items: [
-        {
-          label: "Timetable Engine",
-          href: "/admin/timetable",
-          icon: <CalendarDays className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Classroom & Lab Matrix",
-          href: "/admin/classrooms",
-          icon: <Grid3X3 className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Exam Seating & COE",
-          href: "/admin/exams",
-          icon: <CalendarCheck2 className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-    {
-      title: "Governance & Compliance",
-      items: [
-        {
-          label: "UTU Affiliation",
-          href: "/admin/utu-affiliation",
-          icon: <ShieldCheck className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Attendance Debarment",
-          href: "/admin/debarment",
-          icon: <Ban className="w-[18px] h-[18px]" />,
-          badge: "Ord 14B",
-          badgeColor: "bg-red-500 text-white",
-        },
-        {
-          label: "Grade Locking",
-          href: "/admin/grade-locking",
-          icon: <Lock className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-    {
-      title: "Campus Infrastructure",
-      items: [
-        {
-          label: "Fee Ledger & Accounts",
-          href: "/admin/fees",
-          icon: <Wallet className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Central Library",
-          href: "/admin/library",
-          icon: <BookOpen className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Hostels & Outpass",
-          href: "/admin/hostel",
-          icon: <Bed className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Fleet & Transport",
-          href: "/admin/transport",
-          icon: <Bus className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Campus Notices",
-          href: "/admin/notices",
-          icon: <BellRing className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Grievances & Tickets",
-          href: "/admin/complaints",
-          icon: <HelpCircle className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-    {
-      title: "System & AI",
-      items: [
-        {
-          label: "AI Campus Copilot",
-          href: "/admin/ai-copilot",
-          icon: <Bot className="w-[18px] h-[18px] text-cyan-600" />,
-          badge: "Smart",
-          badgeColor: "bg-cyan-600 text-white",
-        },
-        {
-          label: "Role Permissions",
-          href: "/admin/permissions",
-          icon: <KeyRound className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "Audit Logs",
-          href: "/admin/audit-logs",
-          icon: <FileSpreadsheet className="w-[18px] h-[18px]" />,
-        },
-        {
-          label: "System Settings",
-          href: "/admin/settings",
-          icon: <Settings className="w-[18px] h-[18px]" />,
-        },
-      ],
-    },
-  ];
+  const navSections = buildNavSections(currentRole);
 
   return (
     <aside

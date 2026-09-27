@@ -20,32 +20,36 @@ export function DashboardLayout({ children, role = "ADMIN" }: DashboardLayoutPro
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandSearchOpen, setIsCommandSearchOpen] = useState(false);
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      const user = authService.getCurrentUser();
-      if (!user) return false;
-      if (user.role !== "ADMIN" && role && user.role !== role) return false;
-      return true;
-    }
-    return false;
-  });
+  // The real access gate already ran server-side in proxy.ts before this page was
+  // ever sent to the browser. This state only tracks whether the in-memory access token
+  // (needed for API calls) has been re-derived from the httpOnly refresh cookie yet.
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (!user) {
-      router.replace("/login");
-      return;
-    }
+    let cancelled = false;
 
-    // Role-based protection: non-admins cannot access other roles' areas
-    if (user.role !== "ADMIN" && role && user.role !== role) {
-      const authorizedPath = ROLES_CONFIG[user.role]?.defaultPath || "/login";
-      router.replace(authorizedPath);
-    }
+    authService.restoreSession().then((user) => {
+      if (cancelled) return;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      // Defense-in-depth only: proxy.ts already enforced this. Guards against a
+      // stale client render if the session's role changed since the page loaded.
+      if (user.role !== "ADMIN" && role && user.role !== role) {
+        router.replace(ROLES_CONFIG[user.role]?.defaultPath || "/login");
+        return;
+      }
+      setIsReady(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [role, router]);
 
   // Loading state prevents unauthorized flash
-  if (isAuthorized === null) {
+  if (!isReady) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">

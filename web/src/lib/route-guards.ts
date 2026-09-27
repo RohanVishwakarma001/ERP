@@ -3,7 +3,7 @@ import { ROLES_CONFIG } from "./roles";
 
 export function isPathAllowedForRole(role: UserRole | undefined, pathname: string): boolean {
   if (!role) return false;
-  if (pathname === "/login" || pathname === "/otp" || pathname === "/forgot-password" || pathname === "/reset-password") {
+  if (pathname === "/login" || pathname === "/forgot-password" || pathname === "/reset-password") {
     return true;
   }
   
