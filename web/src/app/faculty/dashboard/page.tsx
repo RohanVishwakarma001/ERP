@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
-import { facultyService, timetableService } from "@/services/domain-services";
+import { facultyService, timetableService, attendanceService } from "@/services/domain-services";
 import { authService } from "@/services/auth.service";
+import { getCampusSocket, disconnectCampusSocket } from "@/services/socket-client";
 import {
   QrCode,
   Calendar,
@@ -17,8 +19,11 @@ import {
 
 export default function FacultyDashboardPage() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [countdown, setCountdown] = useState(42);
-  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(60);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [scannedCount, setScannedCount] = useState(0);
+  const [lastScanner, setLastScanner] = useState<string | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentUser = authService.getCurrentUser();
 
@@ -54,21 +59,57 @@ export default function FacultyDashboardPage() {
     timeSlot: "09:00 AM - 10:00 AM",
   };
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isQrModalOpen) {
-      interval = setInterval(() => {
-        setCountdown((c) => (c <= 1 ? 60 : c - 1));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isQrModalOpen]);
+  const section = currentClass.batchSection || "CSE-6A";
 
-  const handleSimulateSync = () => {
-    setIsQrModalOpen(false);
-    setFeedbackToast("56 Students Verified & Logged via Dynamic QR into PostgreSQL Attendance Session");
-    setTimeout(() => setFeedbackToast(null), 4000);
+  const rotateQrToken = async () => {
+    try {
+      const res = await attendanceService.generateQrSession({
+        subjectCode: currentClass.subjectCode,
+        section,
+        period: 1,
+      });
+      setQrToken(res.qrCodeToken);
+      setCountdown(res.expiresInSeconds || 60);
+    } catch {
+      setQrToken(null);
+    }
   };
+
+  useEffect(() => {
+    if (!isQrModalOpen) {
+      if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
+      disconnectCampusSocket();
+      return;
+    }
+
+    setScannedCount(0);
+    setLastScanner(null);
+    rotateQrToken();
+
+    const socket = getCampusSocket();
+    socket.emit("join_room", `class_${section}`);
+    socket.on("qr_scan_received", (payload: { scannedCount: number; studentName: string }) => {
+      setScannedCount(payload.scannedCount);
+      setLastScanner(payload.studentName);
+    });
+
+    rotateTimerRef.current = setInterval(() => {
+      setCountdown((c) => {
+        if (c <= 1) {
+          rotateQrToken();
+          return 60;
+        }
+        return c - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
+      socket.off("qr_scan_received");
+      disconnectCampusSocket();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isQrModalOpen]);
 
   return (
     <DashboardLayout role="FACULTY">
@@ -141,13 +182,6 @@ export default function FacultyDashboardPage() {
             </div>
           </div>
         </div>
-
-        {feedbackToast && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-semibold flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>{feedbackToast}</span>
-          </div>
-        )}
 
         {/* CURRENT PERIOD ALERT CARD (Dynamic Focal Component) */}
         <div className="relative overflow-hidden rounded-2xl bg-white border border-[#E2E8F0] shadow-sm p-6 space-y-4">
@@ -243,7 +277,11 @@ export default function FacultyDashboardPage() {
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center">
               <div className="w-48 h-48 bg-white p-3 rounded-xl border border-slate-300 shadow-sm flex items-center justify-center">
-                <QrCode className="w-40 h-40 text-slate-900" />
+                {qrToken ? (
+                  <QRCodeSVG value={qrToken} size={160} />
+                ) : (
+                  <QrCode className="w-40 h-40 text-slate-300 animate-pulse" />
+                )}
               </div>
               <p className="mt-3 text-xs font-semibold text-slate-700">
                 {currentClass.subjectCode} • Period 1 • Room {currentClass.roomNumber}
@@ -252,22 +290,22 @@ export default function FacultyDashboardPage() {
                 <span>Rotating in</span>
                 <span className="font-bold text-red-600 font-tabular-nums">{countdown}s</span>
               </div>
+              <div className="mt-3 pt-3 border-t border-slate-200 w-full text-center">
+                <span className="text-2xl font-bold text-emerald-600 font-tabular-nums">{scannedCount}</span>
+                <span className="text-xs text-slate-500"> students scanned live</span>
+                {lastScanner && (
+                  <p className="text-[11px] text-slate-400 mt-0.5">Last: {lastScanner}</p>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={handleSimulateSync}
+                onClick={() => setIsQrModalOpen(false)}
                 className="flex-1 py-2.5 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-semibold shadow-xs cursor-pointer"
               >
-                Confirm Present Students
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(false)}
-                className="py-2.5 px-3 rounded-xl border border-[#E2E8F0] text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Dismiss
+                Finish & Close ({scannedCount} Present)
               </button>
             </div>
           </div>

@@ -166,7 +166,7 @@ export function StudentHomeView({
 
       {/* 3. Today's Academic Schedule */}
       <View style={styles.sectionHeaderBetween}>
-        <Text style={styles.sectionTitle}>TODAY'S SCHEDULE</Text>
+        <Text style={styles.sectionTitle}>TODAY&apos;S SCHEDULE</Text>
         <TouchableOpacity onPress={() => onNavigateTab('schedule')}>
           <Text style={styles.viewAllText}>Full Week →</Text>
         </TouchableOpacity>

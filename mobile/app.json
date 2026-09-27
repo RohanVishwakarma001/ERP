@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "JBIT Campus ERP requires camera access to scan classroom QR codes for instant attendance verification.",
-        "NSFaceIDUsageDescription": "Enable biometric verification for fast and secure access to your institutional records."
+        "NSFaceIDUsageDescription": "Enable biometric verification for fast and secure access to your institutional records.",
+        "NSLocationWhenInUseUsageDescription": "JBIT Campus ERP uses your location to confirm you are inside the classroom geofence when marking QR attendance."
       }
     },
     "android": {
@@ -25,6 +26,8 @@
       },
       "permissions": [
         "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
       ],
@@ -37,6 +40,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "JBIT Campus ERP uses your location to confirm you are inside the classroom geofence when marking QR attendance."
+        }
+      ],
       [
         "expo-splash-screen",
         {

@@ -51,6 +51,20 @@ class ScanQrDto {
   userLng?: number;
 }
 
+class VerifyQrMobileDto {
+  @IsString()
+  @IsNotEmpty()
+  payload: string;
+
+  @IsOptional()
+  @IsNumber()
+  userLat?: number;
+
+  @IsOptional()
+  @IsNumber()
+  userLng?: number;
+}
+
 class BatchAttendanceDto {
   @IsString()
   @IsNotEmpty()
@@ -76,15 +90,13 @@ export class AttendanceController {
 
   @Get('summary')
   @ApiOperation({ summary: 'Get current student attendance percentage & subject metrics' })
-  async getMySummary(@CurrentUser() user: any) {
-    const studentId = user.studentId || user.id || 'stu-01';
+  async getMySummary(@CurrentUser('studentId') studentId: string) {
     return this.attendanceService.getStudentSummary(studentId);
   }
 
   @Get('student')
   @ApiOperation({ summary: 'Get subject attendance array for web dashboard' })
-  async getStudentSubjectAttendance(@CurrentUser() user: any) {
-    const studentId = user.studentId || user.id || 'stu-01';
+  async getStudentSubjectAttendance(@CurrentUser('studentId') studentId: string) {
     return this.attendanceService.getSubjectAttendanceList(studentId);
   }
 
@@ -106,11 +118,12 @@ export class AttendanceController {
   @Roles(UserRole.STUDENT)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mobile QR Verification: Scan classroom QR token' })
-  async verifyQrMobile(@CurrentUser() user: any, @Body('payload') payload: string) {
-    const studentId = user.studentId || user.id || 'stu-01';
+  async verifyQrMobile(@CurrentUser('studentId') studentId: string, @Body() dto: VerifyQrMobileDto) {
     return this.attendanceService.scanAndVerifyQr({
-      qrToken: payload,
+      qrToken: dto.payload,
       studentId,
+      userLat: dto.userLat,
+      userLng: dto.userLng,
     });
   }
 
@@ -118,7 +131,7 @@ export class AttendanceController {
   @Roles(UserRole.FACULTY, UserRole.HOD, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Faculty: Generate 60-second rotating QR token with classroom geofence' })
-  async generateQr(@CurrentUser('id') facultyId: string, @Body() dto: GenerateQrDto) {
+  async generateQr(@CurrentUser('facultyId') facultyId: string, @Body() dto: GenerateQrDto) {
     return this.attendanceService.generateQrSession({
       facultyId,
       ...dto,
@@ -129,8 +142,7 @@ export class AttendanceController {
   @Roles(UserRole.STUDENT)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Student: Scan classroom QR token with geofence and anti-proxy verification' })
-  async scanQr(@CurrentUser() user: any, @Body() dto: ScanQrDto) {
-    const studentId = user.studentId || user.id || 'stu-01';
+  async scanQr(@CurrentUser('studentId') studentId: string, @Body() dto: ScanQrDto) {
     return this.attendanceService.scanAndVerifyQr({
       qrToken: dto.qrToken,
       studentId,
@@ -143,7 +155,7 @@ export class AttendanceController {
   @Roles(UserRole.FACULTY, UserRole.HOD, UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Faculty: Submit roster attendance (Present/Absent/Late)' })
-  async submitBatch(@Body() dto: BatchAttendanceDto) {
-    return this.attendanceService.submitBatchAttendance(dto);
+  async submitBatch(@CurrentUser('facultyId') facultyId: string, @Body() dto: BatchAttendanceDto) {
+    return this.attendanceService.submitBatchAttendance({ facultyId, ...dto });
   }
 }

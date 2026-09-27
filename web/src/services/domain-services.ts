@@ -87,6 +87,30 @@ export const attendanceService = {
     const res = await apiClient.post("/attendance/batch", data);
     return res.data;
   },
+
+  async scanQr(qrToken: string, userLat?: number, userLng?: number) {
+    const res = await apiClient.post<{ success: boolean; message: string; subject: string }>(
+      "/attendance/qr/scan",
+      { qrToken, userLat, userLng }
+    );
+    return res.data;
+  },
+
+  async generateQrSession(data: {
+    subjectCode: string;
+    section: string;
+    period: number;
+    latitude?: number;
+    longitude?: number;
+  }) {
+    const res = await apiClient.post<{
+      qrCodeToken: string;
+      expiresInSeconds: number;
+      expiresAt: string;
+      sessionId: string;
+    }>("/attendance/qr/session", data);
+    return res.data;
+  },
 };
 
 // 5. Timetable Service

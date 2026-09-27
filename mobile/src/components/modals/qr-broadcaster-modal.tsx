@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -7,10 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
 import { X, RefreshCw, Users, ShieldAlert, CheckCircle2, Wifi } from 'lucide-react-native';
 
 import { mobileFacultyService } from '@/services/mobile-services';
+import { getCampusSocket, disconnectCampusSocket } from '@/services/socket-client';
 
 interface QrBroadcasterModalProps {
   visible: boolean;
@@ -27,8 +29,10 @@ export function QrBroadcasterModal({
 }: QrBroadcasterModalProps) {
   const [secondsLeft, setSecondsLeft] = useState(60);
   const [scannedCount, setScannedCount] = useState(0);
-  const [totalStudents, setTotalStudents] = useState(60);
-  const [qrToken, setQrToken] = useState('JBIT-SECURE-QR-SESSION-CONNECTING');
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const [lastScanner, setLastScanner] = useState<string | null>(null);
+  const [liveConnected, setLiveConnected] = useState(false);
 
   const fetchTokenFromBackend = async () => {
     try {
@@ -50,7 +54,26 @@ export function QrBroadcasterModal({
   useEffect(() => {
     if (!visible) return;
 
+    setScannedCount(0);
+    setLastScanner(null);
     fetchTokenFromBackend();
+
+    mobileFacultyService
+      .getRosterStudents({ section })
+      .then((students: any) => setTotalStudents(Array.isArray(students) ? students.length : 0))
+      .catch(() => setTotalStudents(0));
+
+    let socketRef: Awaited<ReturnType<typeof getCampusSocket>> | null = null;
+    getCampusSocket().then((socket) => {
+      socketRef = socket;
+      socket.emit('join_room', `class_${section}`);
+      socket.on('connect', () => setLiveConnected(true));
+      socket.on('disconnect', () => setLiveConnected(false));
+      socket.on('qr_scan_received', (payload: { scannedCount: number; studentName: string }) => {
+        setScannedCount(payload.scannedCount);
+        setLastScanner(payload.studentName);
+      });
+    });
 
     const timer = setInterval(() => {
       setSecondsLeft((prev) => {
@@ -64,6 +87,8 @@ export function QrBroadcasterModal({
 
     return () => {
       clearInterval(timer);
+      socketRef?.off('qr_scan_received');
+      disconnectCampusSocket();
     };
   }, [visible, section]);
 
@@ -93,28 +118,14 @@ export function QrBroadcasterModal({
 
           {/* QR Display Card */}
           <View style={styles.qrDisplayCard}>
-            {/* Mock QR matrix visualization with high-tech look */}
             <View style={styles.qrVisualContainer}>
-              <View style={styles.mockQrMatrix}>
-                <View style={styles.qrCornerMark} />
-                <View style={[styles.qrCornerMark, { right: 8, left: undefined }]} />
-                <View style={[styles.qrCornerMark, { bottom: 8, top: undefined }]} />
-                <View style={styles.qrCenterPill}>
-                  <Text style={styles.qrCenterText}>JBIT</Text>
+              {qrToken ? (
+                <QRCode value={qrToken} size={180} color="#0F172A" backgroundColor="#FFFFFF" />
+              ) : (
+                <View style={styles.qrLoadingBox}>
+                  <ActivityIndicator size="large" color="#0B3B60" />
                 </View>
-                {/* Visual grid dots */}
-                <View style={styles.dotsRow}>
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                </View>
-                <View style={[styles.dotsRow, { top: 80 }]}>
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                  <View style={styles.dot} />
-                </View>
-              </View>
+              )}
             </View>
 
             {/* Countdown timer pill */}
@@ -129,7 +140,7 @@ export function QrBroadcasterModal({
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.tokenLabel}>Token ID: {qrToken}</Text>
+            <Text style={styles.tokenLabel}>Token ID: {qrToken || 'Connecting...'}</Text>
           </View>
 
           {/* Live Attendance Counter */}
@@ -140,7 +151,7 @@ export function QrBroadcasterModal({
                 <Text style={styles.tallyTitle}>Live Scans Received</Text>
               </View>
               <Text style={styles.tallyCount}>
-                <Text style={styles.tallyScanned}>{scannedCount}</Text> / {totalStudents} Students
+                <Text style={styles.tallyScanned}>{scannedCount}</Text> / {totalStudents || '—'} Students
               </Text>
             </View>
 
@@ -149,14 +160,20 @@ export function QrBroadcasterModal({
               <View
                 style={[
                   styles.progressFill,
-                  { width: `${(scannedCount / totalStudents) * 100}%` },
+                  { width: `${totalStudents > 0 ? Math.min(100, (scannedCount / totalStudents) * 100) : 0}%` },
                 ]}
               />
             </View>
 
             <View style={styles.geofenceCheckRow}>
-              <Wifi size={14} color="#10B981" />
-              <Text style={styles.geofenceNote}>Campus Wi-Fi & Geofence Active (Audi-02)</Text>
+              <Wifi size={14} color={liveConnected ? '#10B981' : '#94A3B8'} />
+              <Text style={styles.geofenceNote}>
+                {liveConnected
+                  ? lastScanner
+                    ? `Live • Last scan: ${lastScanner}`
+                    : 'Live updates connected — waiting for scans'
+                  : 'Connecting to live scan feed...'}
+              </Text>
             </View>
           </View>
 
@@ -224,47 +241,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     ...Shadows.md,
   },
-  mockQrMatrix: {
+  qrLoadingBox: {
     width: 180,
     height: 180,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#0F172A',
-    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  qrCornerMark: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 36,
-    height: 36,
-    backgroundColor: '#002541',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-  },
-  qrCenterPill: {
-    backgroundColor: '#BB0112',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  qrCenterText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 10,
-  },
-  dotsRow: {
-    position: 'absolute',
-    top: 54,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    backgroundColor: '#0F172A',
   },
   countdownRow: {
     flexDirection: 'row',

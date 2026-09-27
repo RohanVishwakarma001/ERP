@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -6,11 +6,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Animated,
   Alert,
 } from 'react-native';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import * as Location from 'expo-location';
 import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
-import { X, QrCode, MapPin, CheckCircle2, ShieldCheck, Zap } from 'lucide-react-native';
+import { X, QrCode, MapPin, CheckCircle2, ShieldCheck } from 'lucide-react-native';
 import { mobileStudentService } from '@/services/mobile-services';
 
 interface QrScannerModalProps {
@@ -19,62 +20,61 @@ interface QrScannerModalProps {
   onSuccess: (details: string) => void;
 }
 
+type ScanState = 'SCANNING' | 'VERIFYING' | 'SUCCESS';
+
 export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalProps) {
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifiedSuccess, setVerifiedSuccess] = useState(false);
-  const [laserAnim] = useState(new Animated.Value(0));
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanState, setScanState] = useState<ScanState>('SCANNING');
+  const [locationLabel, setLocationLabel] = useState('Acquiring GPS fix...');
+  const hasScannedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
-      setVerifiedSuccess(false);
-      setIsVerifying(false);
-      // Run scanning laser loop
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(laserAnim, {
-            toValue: 200,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(laserAnim, {
-            toValue: 0,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
+      setScanState('SCANNING');
+      hasScannedRef.current = false;
+      setLocationLabel('Acquiring GPS fix...');
+      if (!permission?.granted) {
+        requestPermission();
+      }
     }
   }, [visible]);
 
-  const handleScan = async () => {
-    setIsVerifying(true);
+  const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
+    if (hasScannedRef.current || scanState !== 'SCANNING') return;
+    hasScannedRef.current = true;
+    setScanState('VERIFYING');
+
     try {
-      const res = await mobileStudentService.verifyQrAttendance(
-        'JBIT-SECURE-QR-CS-602-ACTIVE',
-        { lat: 30.3441, lng: 77.9472 }
-      );
-      setIsVerifying(false);
-      setVerifiedSuccess(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      let coords: { lat?: number; lng?: number } = {};
+      if (status === 'granted') {
+        setLocationLabel('Verifying classroom geofence...');
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        coords = { lat: position.coords.latitude, lng: position.coords.longitude };
+      } else {
+        setLocationLabel('Location permission denied — geofence cannot be verified');
+      }
+
+      const res = await mobileStudentService.verifyQrAttendance(result.data, coords);
+      setScanState('SUCCESS');
       setTimeout(() => {
-        onSuccess(res.message || 'CS-602 Cloud Computing (Period 2)');
+        onSuccess(res?.subject ? `${res.subject} marked present` : 'Attendance verified');
         onClose();
       }, 1200);
     } catch (err: any) {
-      setIsVerifying(false);
+      hasScannedRef.current = false;
+      setScanState('SCANNING');
       Alert.alert(
         'QR Attendance Failed',
-        err.response?.data?.message || 'Geofence validation failed or session expired.'
+        err?.response?.data?.message || 'Could not verify attendance. Please rescan the current classroom code.'
       );
     }
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
@@ -85,7 +85,7 @@ export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalPr
               </View>
               <View>
                 <Text style={styles.title}>Scan Classroom QR</Text>
-                <Text style={styles.subtitle}>Geofence Validated • Period 2 Active</Text>
+                <Text style={styles.subtitle}>Point your camera at the faculty&apos;s live code</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -96,39 +96,45 @@ export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalPr
           {/* Viewfinder Area */}
           <View style={styles.viewfinderContainer}>
             <View style={styles.reticle}>
-              {/* Corner brackets */}
-              <View style={[styles.corner, styles.topLeft]} />
-              <View style={[styles.corner, styles.topRight]} />
-              <View style={[styles.corner, styles.bottomLeft]} />
-              <View style={[styles.corner, styles.bottomRight]} />
-
-              {/* Animated Laser line */}
-              {!verifiedSuccess && !isVerifying && (
-                <Animated.View
-                  style={[
-                    styles.laserLine,
-                    { transform: [{ translateY: laserAnim }] },
-                  ]}
-                />
-              )}
-
-              {/* Status Overlay */}
-              {isVerifying ? (
+              {!permission ? (
+                <ActivityIndicator size="large" color="#38BDF8" />
+              ) : !permission.granted ? (
                 <View style={styles.statusBox}>
-                  <ActivityIndicator size="large" color="#38BDF8" />
-                  <Text style={styles.verifyingText}>Verifying Geofenced Token...</Text>
-                  <Text style={styles.tokenSubtext}>JBIT Campus Node 102.39</Text>
-                </View>
-              ) : verifiedSuccess ? (
-                <View style={styles.statusBox}>
-                  <CheckCircle2 size={48} color="#10B981" />
-                  <Text style={styles.successTitle}>Attendance Recorded!</Text>
-                  <Text style={styles.successSubtext}>CS-602 • Period 2 Marked Present</Text>
+                  <Text style={styles.verifyingText}>Camera access is required to scan QR codes.</Text>
+                  <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+                    <Text style={styles.permissionBtnText}>Grant Camera Access</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
-                <View style={styles.centerTarget}>
-                  <Text style={styles.targetPrompt}>Align QR inside frame</Text>
-                </View>
+                <>
+                  {scanState === 'SCANNING' && (
+                    <CameraView
+                      style={StyleSheet.absoluteFill}
+                      facing="back"
+                      barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                      onBarcodeScanned={handleBarcodeScanned}
+                    />
+                  )}
+
+                  {/* Corner brackets */}
+                  <View style={[styles.corner, styles.topLeft]} />
+                  <View style={[styles.corner, styles.topRight]} />
+                  <View style={[styles.corner, styles.bottomLeft]} />
+                  <View style={[styles.corner, styles.bottomRight]} />
+
+                  {scanState === 'VERIFYING' ? (
+                    <View style={styles.statusBox}>
+                      <ActivityIndicator size="large" color="#38BDF8" />
+                      <Text style={styles.verifyingText}>Verifying Attendance...</Text>
+                      <Text style={styles.tokenSubtext}>{locationLabel}</Text>
+                    </View>
+                  ) : scanState === 'SUCCESS' ? (
+                    <View style={styles.statusBox}>
+                      <CheckCircle2 size={48} color="#10B981" />
+                      <Text style={styles.successTitle}>Attendance Recorded!</Text>
+                    </View>
+                  ) : null}
+                </>
               )}
             </View>
           </View>
@@ -138,29 +144,15 @@ export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalPr
             <View style={styles.telemetryRow}>
               <MapPin size={16} color="#059669" />
               <Text style={styles.telemetryText}>
-                Location: <Text style={styles.boldText}>Block B, 4th Floor Lab-401</Text>
+                GPS geofence checked against the live classroom session
               </Text>
             </View>
             <View style={styles.telemetryRow}>
               <ShieldCheck size={16} color="#0284C7" />
               <Text style={styles.telemetryText}>
-                Anti-Proxy: <Text style={styles.boldText}>Wi-Fi BSSID Verified</Text>
+                Token rotates every 60s and cannot be reused
               </Text>
             </View>
-          </View>
-
-          {/* Action triggers */}
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={styles.simulateBtn}
-              onPress={handleScan}
-              disabled={isVerifying || verifiedSuccess}
-            >
-              <Zap size={16} color="#FFFFFF" />
-              <Text style={styles.simulateBtnText}>
-                {isVerifying ? 'Verifying...' : 'Scan & Mark Attendance'}
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -223,8 +215,8 @@ const styles = StyleSheet.create({
     marginVertical: Spacing.lg,
   },
   reticle: {
-    width: 240,
-    height: 240,
+    width: 260,
+    height: 260,
     backgroundColor: '#0F172A',
     borderRadius: 16,
     position: 'relative',
@@ -237,6 +229,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderColor: '#38BDF8',
+    zIndex: 2,
   },
   topLeft: {
     top: 12,
@@ -262,27 +255,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 4,
     borderRightWidth: 4,
   },
-  laserLine: {
-    position: 'absolute',
-    top: 20,
-    left: 16,
-    right: 16,
-    height: 3,
-    backgroundColor: '#38BDF8',
-    borderRadius: 2,
-    shadowColor: '#38BDF8',
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-  },
   statusBox: {
     alignItems: 'center',
     padding: 16,
+    zIndex: 3,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    borderRadius: 12,
   },
   verifyingText: {
     color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     marginTop: 12,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
   tokenSubtext: {
     color: '#94A3B8',
@@ -295,19 +281,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 8,
   },
-  successSubtext: {
-    color: '#E2E8F0',
-    fontSize: 12,
-    marginTop: 4,
-    textAlign: 'center',
+  permissionBtn: {
+    marginTop: 14,
+    backgroundColor: '#0B3B60',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
   },
-  centerTarget: {
-    alignItems: 'center',
-  },
-  targetPrompt: {
-    color: '#94A3B8',
+  permissionBtnText: {
+    color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   telemetryCard: {
     backgroundColor: '#F8FAFC',
@@ -325,27 +309,6 @@ const styles = StyleSheet.create({
   telemetryText: {
     fontSize: 12,
     color: '#475569',
-  },
-  boldText: {
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  actionRow: {
-    marginTop: Spacing.lg,
-  },
-  simulateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#0B3B60',
-    paddingVertical: 14,
-    borderRadius: 12,
-    ...Shadows.sm,
-  },
-  simulateBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
+    flex: 1,
   },
 });

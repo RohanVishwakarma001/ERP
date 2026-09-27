@@ -3,10 +3,12 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { AttendanceStatus, AttendanceVerificationMethod } from '@prisma/client';
+import { EventsGateway } from '../websocket/events.gateway';
+import { AttendanceStatus, AttendanceVerificationMethod, AttendanceSessionStatus, Prisma } from '@prisma/client';
 
 export interface SubjectAttendanceStat {
   code: string;
@@ -81,21 +83,12 @@ const MOCK_ATTENDANCE_SUBJECTS: SubjectAttendanceStat[] = [
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
+  private static readonly DEFAULT_GEOFENCE_RADIUS_M = 35;
 
-  // In-memory active QR tokens map for instant sub-second validation
-  private activeQrTokens: Map<
-    string,
-    {
-      sessionId: string;
-      subjectCode: string;
-      expiresAt: Date;
-      geofenceLat?: number;
-      geofenceLng?: number;
-      geofenceRadius: number;
-    }
-  > = new Map();
-
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventsGateway: EventsGateway,
+  ) {}
 
   /**
    * Mathematically calculates student attendance & statutory 75% UTU metrics
@@ -242,8 +235,51 @@ export class AttendanceService {
     ];
   }
 
+  private requireDb() {
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException(
+        'Attendance database is currently unreachable. Please try again shortly — this action was NOT recorded.',
+      );
+    }
+  }
+
+  private startOfToday(): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private async resolveSubjectAndSection(subjectCode: string, sectionName: string) {
+    const subject = await this.prisma.subject.findUnique({ where: { code: subjectCode } });
+    if (!subject) {
+      throw new BadRequestException(`Unknown subject code: ${subjectCode}`);
+    }
+    const section = await this.prisma.section.findFirst({ where: { name: sectionName } });
+    if (!section) {
+      throw new BadRequestException(`Unknown section: ${sectionName}`);
+    }
+    return { subject, section };
+  }
+
+  /** Recomputes and persists the cached Student.overallAttendance / isDebarred fields from real records. */
+  private async recalculateStudentAttendance(studentId: string) {
+    const records = await this.prisma.attendanceRecord.findMany({ where: { studentId } });
+    if (records.length === 0) return;
+    const attended = records.filter(
+      (r) => r.status === AttendanceStatus.PRESENT || r.status === AttendanceStatus.EXCUSED,
+    ).length;
+    const percentage = Number(((attended / records.length) * 100).toFixed(1));
+    await this.prisma.student.update({
+      where: { id: studentId },
+      data: { overallAttendance: percentage, isDebarred: percentage < 75.0 },
+    });
+  }
+
   /**
-   * Faculty generates 60s rotating QR token with classroom geofence
+   * Faculty generates/rotates a 60s QR token with classroom geofence, backed by a
+   * real AttendanceSession row. Re-generating within the same class period rotates
+   * the token on the existing OPEN session rather than fragmenting records across
+   * multiple sessions.
    */
   async generateQrSession(data: {
     facultyId: string;
@@ -253,32 +289,64 @@ export class AttendanceService {
     latitude?: number;
     longitude?: number;
   }) {
-    const token = `JBIT-SECURE-QR-${data.subjectCode}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const expiresAt = new Date(Date.now() + 60 * 1000); // 60s lifetime
+    this.requireDb();
+    const { subject, section } = await this.resolveSubjectAndSection(data.subjectCode, data.section);
 
-    this.activeQrTokens.set(token, {
-      sessionId: `sess-${Date.now()}`,
-      subjectCode: data.subjectCode,
-      expiresAt,
-      geofenceLat: data.latitude || 30.3441,
-      geofenceLng: data.longitude || 77.9472,
-      geofenceRadius: 35.0, // 35 meters geofence radius
+    const token = `JBIT-QR-${data.subjectCode}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const expiresAt = new Date(Date.now() + 60 * 1000);
+    const today = this.startOfToday();
+
+    const existing = await this.prisma.attendanceSession.findFirst({
+      where: {
+        subjectId: subject.id,
+        sectionId: section.id,
+        period: data.period,
+        date: today,
+        status: AttendanceSessionStatus.OPEN,
+      },
     });
 
+    const geofenceLat = data.latitude ?? existing?.geofenceLat ?? undefined;
+    const geofenceLng = data.longitude ?? existing?.geofenceLng ?? undefined;
+
+    const session = existing
+      ? await this.prisma.attendanceSession.update({
+          where: { id: existing.id },
+          data: { qrToken: token, qrExpiresAt: expiresAt, geofenceLat, geofenceLng },
+        })
+      : await this.prisma.attendanceSession.create({
+          data: {
+            subjectId: subject.id,
+            sectionId: section.id,
+            facultyId: data.facultyId,
+            date: today,
+            period: data.period,
+            status: AttendanceSessionStatus.OPEN,
+            qrToken: token,
+            qrExpiresAt: expiresAt,
+            geofenceLat,
+            geofenceLng,
+            geofenceRadius: AttendanceService.DEFAULT_GEOFENCE_RADIUS_M,
+          },
+        });
+
     return {
-      qrCodeToken: token,
+      qrCodeToken: session.qrToken,
       expiresInSeconds: 60,
-      expiresAt,
+      expiresAt: session.qrExpiresAt,
       subjectCode: data.subjectCode,
       section: data.section,
       period: data.period,
-      geofenceValidated: true,
+      geofenceValidated: geofenceLat != null && geofenceLng != null,
+      sessionId: session.id,
     };
   }
 
   /**
-   * Student scans classroom QR token.
-   * Validates token expiration, geofence, enrollment, and prevents duplicate logging.
+   * Student scans classroom QR token. Validates the token against the real,
+   * live AttendanceSession row (no fallback bypass), enforces the geofence when
+   * one is configured, and relies on the sessionId+studentId unique constraint
+   * to prevent duplicate scans of the same session.
    */
   async scanAndVerifyQr(data: {
     qrToken: string;
@@ -286,36 +354,83 @@ export class AttendanceService {
     userLat?: number;
     userLng?: number;
   }) {
-    const active = this.activeQrTokens.get(data.qrToken);
+    this.requireDb();
 
-    // Check expiration
-    if (!active || new Date() > active.expiresAt) {
-      // In development fallback, if token looks like JBIT-SECURE-QR, accept
-      if (!data.qrToken || !data.qrToken.startsWith('JBIT-')) {
-        throw new BadRequestException('QR Code has expired or is invalid. Please rescan the active faculty code.');
-      }
+    if (!data.qrToken) {
+      throw new BadRequestException('No QR code provided.');
     }
 
-    // Geofence validation (if coordinates provided)
-    if (active?.geofenceLat && data.userLat) {
-      const distance = this.calculateDistance(
-        active.geofenceLat,
-        active.geofenceLng || 0,
-        data.userLat,
-        data.userLng || 0,
-      );
-      if (distance > active.geofenceRadius) {
+    const session = await this.prisma.attendanceSession.findUnique({
+      where: { qrToken: data.qrToken },
+      include: { subject: true, section: true },
+    });
+
+    if (!session) {
+      throw new BadRequestException('Invalid QR code. Please scan the code currently displayed by your faculty.');
+    }
+    if (session.status !== AttendanceSessionStatus.OPEN) {
+      throw new BadRequestException('This attendance session has already been closed.');
+    }
+    if (!session.qrExpiresAt || new Date() > session.qrExpiresAt) {
+      throw new BadRequestException('QR code has expired. Please scan the current code — it rotates every 60 seconds.');
+    }
+
+    if (session.geofenceLat != null && session.geofenceLng != null) {
+      if (data.userLat == null || data.userLng == null) {
+        throw new BadRequestException('Location access is required to mark attendance for this class.');
+      }
+      const distance = this.calculateDistance(session.geofenceLat, session.geofenceLng, data.userLat, data.userLng);
+      const radius = session.geofenceRadius ?? AttendanceService.DEFAULT_GEOFENCE_RADIUS_M;
+      if (distance > radius) {
         throw new BadRequestException(
-          `Geofence validation failed. You are ${Math.round(distance)}m away from the classroom (max permitted: ${active.geofenceRadius}m).`,
+          `Geofence validation failed. You are ${Math.round(distance)}m from the classroom (max permitted: ${radius}m).`,
         );
       }
     }
 
-    // Return success verification
+    const student = await this.prisma.student.findUnique({
+      where: { id: data.studentId },
+      include: { user: true },
+    });
+    if (!student) {
+      throw new BadRequestException('Student profile not found for this account.');
+    }
+
+    try {
+      await this.prisma.attendanceRecord.create({
+        data: {
+          sessionId: session.id,
+          studentId: data.studentId,
+          status: AttendanceStatus.PRESENT,
+          verifiedVia: AttendanceVerificationMethod.QR,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Attendance for this class has already been recorded.');
+      }
+      throw err;
+    }
+
+    await this.recalculateStudentAttendance(data.studentId);
+
+    const scannedCount = await this.prisma.attendanceRecord.count({ where: { sessionId: session.id } });
+    try {
+      this.eventsGateway.server.to(`class_${session.section.name}`).emit('qr_scan_received', {
+        sessionId: session.id,
+        studentName: student.user.name,
+        rollNumber: student.rollNumber,
+        scannedCount,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to broadcast live scan tally: ${err.message}`);
+    }
+
     return {
       success: true,
       message: 'Attendance recorded successfully via Geofenced QR Code.',
-      subject: active?.subjectCode || 'CS-602 Cloud Computing & DevOps',
+      subject: session.subject.code,
       timestamp: new Date().toISOString(),
       method: AttendanceVerificationMethod.QR,
       statutoryImpact: '+1 Recorded class in UTU Ledger',
@@ -323,14 +438,58 @@ export class AttendanceService {
   }
 
   /**
-   * Faculty submits bulk roster attendance
+   * Faculty submits/locks bulk roster attendance for a period. Persists real
+   * AttendanceRecord rows (upserted so re-submission corrects rather than
+   * duplicates) and closes the session.
    */
   async submitBatchAttendance(data: {
+    facultyId: string;
     subjectCode: string;
     section: string;
     period: number;
     records: { studentId: string; status: AttendanceStatus }[];
   }) {
+    this.requireDb();
+    const { subject, section } = await this.resolveSubjectAndSection(data.subjectCode, data.section);
+    const today = this.startOfToday();
+
+    const existingSession = await this.prisma.attendanceSession.findFirst({
+      where: { subjectId: subject.id, sectionId: section.id, period: data.period, date: today },
+    });
+
+    const session = existingSession
+      ? await this.prisma.attendanceSession.update({
+          where: { id: existingSession.id },
+          data: { status: AttendanceSessionStatus.CLOSED },
+        })
+      : await this.prisma.attendanceSession.create({
+          data: {
+            subjectId: subject.id,
+            sectionId: section.id,
+            facultyId: data.facultyId,
+            date: today,
+            period: data.period,
+            status: AttendanceSessionStatus.CLOSED,
+          },
+        });
+
+    await this.prisma.$transaction(
+      data.records.map((r) =>
+        this.prisma.attendanceRecord.upsert({
+          where: { sessionId_studentId: { sessionId: session.id, studentId: r.studentId } },
+          update: { status: r.status, verifiedVia: AttendanceVerificationMethod.MANUAL },
+          create: {
+            sessionId: session.id,
+            studentId: r.studentId,
+            status: r.status,
+            verifiedVia: AttendanceVerificationMethod.MANUAL,
+          },
+        }),
+      ),
+    );
+
+    await Promise.all(data.records.map((r) => this.recalculateStudentAttendance(r.studentId)));
+
     const presentCount = data.records.filter((r) => r.status === AttendanceStatus.PRESENT).length;
     const absentCount = data.records.filter((r) => r.status === AttendanceStatus.ABSENT).length;
     const lateCount = data.records.filter((r) => r.status === AttendanceStatus.LATE).length;

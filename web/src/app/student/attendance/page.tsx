@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import jsQR from "jsqr";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
@@ -16,10 +17,18 @@ import {
   Sparkles,
 } from "lucide-react";
 
+type ScanPhase = "IDLE" | "REQUESTING_CAMERA" | "SCANNING" | "VERIFYING" | "ERROR";
+
 export default function StudentAttendancePage() {
   const [activeTab, setActiveTab] = useState<"OVERVIEW" | "SCANNER" | "REQUESTS">("OVERVIEW");
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanPhase, setScanPhase] = useState<ScanPhase>("IDLE");
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const hasHandledScanRef = useRef(false);
 
   const { data: attendance = [] } = useQuery({
     queryKey: ["studentAttendance"],
@@ -36,14 +45,91 @@ export default function StudentAttendancePage() {
   const totalAttended = attendance.reduce((s, a) => s + (a.attended || 0), 0);
   const overallPercent = totalConducted > 0 ? ((totalAttended / totalConducted) * 100).toFixed(1) : "0.0";
 
-  const simulateQrScan = () => {
-    setIsScanning(true);
-    setScanResult(null);
-    setTimeout(() => {
-      setIsScanning(false);
-      setScanResult("Attendance Successfully Verified: CS-602 Cloud Computing (Period 2) • Geofence Validated (JBIT Block B)");
-    }, 1800);
+  const stopCamera = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }, []);
+
+  const getGeolocation = () =>
+    new Promise<{ lat?: number; lng?: number }>((resolve) => {
+      if (!navigator.geolocation) return resolve({});
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve({}),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+
+  const handleDecodedQr = async (data: string) => {
+    if (hasHandledScanRef.current) return;
+    hasHandledScanRef.current = true;
+    stopCamera();
+    setScanPhase("VERIFYING");
+    setScanError(null);
+
+    try {
+      const { lat, lng } = await getGeolocation();
+      const res = await attendanceService.scanQr(data, lat, lng);
+      setScanResult(`${res.message} (${res.subject})`);
+      setScanPhase("IDLE");
+    } catch (err: any) {
+      setScanError(
+        err?.response?.data?.error?.message || err?.response?.data?.message || "Could not verify attendance. Please rescan the current classroom code."
+      );
+      setScanPhase("ERROR");
+    }
   };
+
+  const scanLoop = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      rafRef.current = requestAnimationFrame(scanLoop);
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    if (code?.data) {
+      handleDecodedQr(code.data);
+      return;
+    }
+    rafRef.current = requestAnimationFrame(scanLoop);
+  };
+
+  const startScanning = async () => {
+    setScanResult(null);
+    setScanError(null);
+    hasHandledScanRef.current = false;
+    setScanPhase("REQUESTING_CAMERA");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setScanPhase("SCANNING");
+      rafRef.current = requestAnimationFrame(scanLoop);
+    } catch {
+      setScanError("Camera access is required to scan QR codes. Please allow camera permission.");
+      setScanPhase("ERROR");
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "SCANNER") {
+      stopCamera();
+      setScanPhase("IDLE");
+    }
+    return () => stopCamera();
+  }, [activeTab, stopCamera]);
 
   return (
     <DashboardLayout role="STUDENT">
@@ -227,7 +313,7 @@ export default function StudentAttendancePage() {
           <div className="p-8 rounded-2xl border border-[#E2E8F0] bg-white shadow-sm flex flex-col items-center text-center space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700">
               <MapPin className="w-3.5 h-3.5" />
-              <span>Geofence Validated • JBIT Block B Coordinates</span>
+              <span>Live camera scan • Real classroom geofence check</span>
             </div>
 
             <h2 className="text-xl font-bold text-slate-900 font-headline">
@@ -237,35 +323,52 @@ export default function StudentAttendancePage() {
               Point your camera at the faculty&apos;s rotating dynamic QR code displayed on the classroom projection screen to record authenticated attendance.
             </p>
 
-            {/* Viewfinder Mockup */}
+            {/* Live camera viewfinder */}
             <div className="relative w-64 h-64 rounded-2xl bg-slate-900 border-4 border-[#0B3B60] flex items-center justify-center overflow-hidden shadow-xl">
-              {isScanning ? (
-                <div className="flex flex-col items-center gap-2 text-white">
+              <video
+                ref={videoRef}
+                className={`absolute inset-0 w-full h-full object-cover ${scanPhase === "SCANNING" ? "opacity-100" : "opacity-0"}`}
+                muted
+                playsInline
+              />
+              <canvas ref={canvasRef} className="hidden" />
+
+              {scanPhase === "REQUESTING_CAMERA" || scanPhase === "VERIFYING" ? (
+                <div className="flex flex-col items-center gap-2 text-white z-10">
                   <div className="w-12 h-12 rounded-full border-4 border-emerald-400 border-t-transparent animate-spin"></div>
-                  <span className="text-xs font-semibold">Validating with UTU Node...</span>
+                  <span className="text-xs font-semibold">
+                    {scanPhase === "REQUESTING_CAMERA" ? "Requesting camera access..." : "Verifying with UTU Node..."}
+                  </span>
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-400">
+              ) : scanPhase === "IDLE" ? (
+                <div className="flex flex-col items-center gap-2 text-slate-400 z-10">
                   <QrCode className="w-16 h-16 text-slate-600 animate-pulse" />
                   <span className="text-xs font-medium">Ready to scan token</span>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <button
               type="button"
-              disabled={isScanning}
-              onClick={simulateQrScan}
-              className="px-6 py-3 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-2"
+              disabled={scanPhase === "REQUESTING_CAMERA" || scanPhase === "SCANNING" || scanPhase === "VERIFYING"}
+              onClick={startScanning}
+              className="px-6 py-3 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
             >
               <QrCode className="w-4 h-4" />
-              <span>Simulate QR Token Capture</span>
+              <span>{scanPhase === "SCANNING" ? "Scanning for QR code..." : "Start Camera & Scan"}</span>
             </button>
 
             {scanResult && (
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center gap-2 animate-in fade-in">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>{scanResult}</span>
+              </div>
+            )}
+
+            {scanError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-center gap-2 animate-in fade-in">
+                <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                <span>{scanError}</span>
               </div>
             )}
           </div>
