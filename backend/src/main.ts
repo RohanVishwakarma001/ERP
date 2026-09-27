@@ -33,6 +33,10 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
+      // In development mode, permit all origins (including Expo Go, local IP, Metro bundler, emulators)
+      if (!isProduction) {
+        return callback(null, true);
+      }
       // Requests with no Origin header (native mobile apps, curl, server-to-server) are allowed;
       // browser-origin requests must match the configured allowlist exactly.
       if (!origin || allowedOrigins.has(origin)) {
@@ -100,7 +104,7 @@ async function bootstrap() {
   }
 
   const port = process.env.PORT || 8000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`==================================================================`);
   logger.log(`🎓 JBIT Campus ERP Backend Server started successfully on port ${port}`);
