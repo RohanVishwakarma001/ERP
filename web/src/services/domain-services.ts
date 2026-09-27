@@ -183,6 +183,20 @@ export const feeService = {
     const res = await apiClient.get("/fees/me");
     return res.data;
   },
+
+  async createOrder(amount: number): Promise<{ orderId: string; amount: number; currency: string; keyId: string }> {
+    const res = await apiClient.post("/fees/orders", { amount });
+    return res.data;
+  },
+
+  async verifyPayment(data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<{ success: boolean; message: string; receiptNumber: string }> {
+    const res = await apiClient.post("/fees/verify", data);
+    return res.data;
+  },
 };
 
 // 9. Notice Service

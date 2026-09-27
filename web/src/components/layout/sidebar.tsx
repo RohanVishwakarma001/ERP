@@ -112,7 +112,10 @@ function buildNavSections(currentRole: UserRole): NavSection[] {
     PLACEMENT_OFFICER: [{ label: "TPC Placement Drive", href: "/admin/placement", icon: <Briefcase className="w-[18px] h-[18px]" /> }],
     HOSTEL_WARDEN: [{ label: "Hostels & Outpass", href: "/admin/hostel", icon: <Bed className="w-[18px] h-[18px]" /> }],
     TRANSPORT_MANAGER: [{ label: "Fleet & Transport", href: "/admin/transport", icon: <Bus className="w-[18px] h-[18px]" /> }],
-    STUDENT: [{ label: "Attendance", href: "/student/attendance", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> }],
+    STUDENT: [
+      { label: "Attendance", href: "/student/attendance", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> },
+      { label: "Fee Ledger", href: "/student/fees", icon: <Wallet className="w-[18px] h-[18px]" /> },
+    ],
   };
 
   const extras = roleExtras[currentRole];

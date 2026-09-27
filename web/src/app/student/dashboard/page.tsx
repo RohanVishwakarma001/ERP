@@ -229,7 +229,7 @@ export default function StudentDashboardPage() {
             </Link>
 
             <Link
-              href="/admin/fees"
+              href="/student/fees"
               className="p-3.5 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0B3B60] hover:shadow-md transition-all flex flex-col items-center text-center group cursor-pointer"
             >
               <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">

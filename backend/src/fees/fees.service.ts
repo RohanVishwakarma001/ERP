@@ -1,4 +1,13 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHmac, timingSafeEqual } from 'crypto';
+import Razorpay = require('razorpay');
 import { PrismaService } from '../prisma/prisma.service';
 
 const MOCK_STUDENT_FEE = {
@@ -24,31 +33,44 @@ const MOCK_STUDENT_FEE = {
       mode: 'UPI / NetBanking',
       status: 'SUCCESS',
     },
-    {
-      id: 'TXN-02',
-      date: '12 January 2026',
-      amount: 75000,
-      receiptNumber: 'JBIT/REC/2026/0112',
-      mode: 'NetBanking',
-      status: 'SUCCESS',
-    },
   ],
 };
 
+function safeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
 @Injectable()
 export class FeesService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(FeesService.name);
+  private razorpay: Razorpay | null = null;
+
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    const keyId = this.configService.get<string>('PAYMENT_KEY_ID');
+    const keySecret = this.configService.get<string>('PAYMENT_KEY_SECRET');
+
+    if (keyId && keySecret && !keyId.includes('mock')) {
+      this.razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    } else {
+      this.logger.warn(
+        'Razorpay is not configured with real credentials (PAYMENT_KEY_ID/PAYMENT_KEY_SECRET are unset or placeholders). ' +
+          'Payment endpoints will return 503 until real keys are set in the environment.',
+      );
+    }
+  }
 
   async getMyFees(studentId: string) {
     if (this.prisma.isConnected) {
       try {
         const student = await this.prisma.student.findFirst({
           where: {
-            OR: [
-              { id: studentId },
-              { rollNumber: studentId },
-              { user: { email: studentId } },
-            ],
+            OR: [{ id: studentId }, { rollNumber: studentId }, { user: { email: studentId } }],
           },
           include: {
             user: true,
@@ -81,14 +103,16 @@ export class FeesService {
               { title: 'University Examination Fee', amount: fs.examFee, status: isCleared ? 'PAID' : 'PENDING' },
               { title: 'Library & Digital Knowledge Deposit', amount: fs.libraryFee, status: isCleared ? 'PAID' : 'PENDING' },
             ],
-            recentTransactions: sf.transactions.map((t) => ({
-              id: t.id,
-              date: new Date(t.paidAt || t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
-              amount: t.amount,
-              receiptNumber: t.receiptNumber || 'REC-2026-0489',
-              mode: t.paymentMethod,
-              status: t.status,
-            })),
+            recentTransactions: sf.transactions
+              .filter((t) => t.status === 'SUCCESS')
+              .map((t) => ({
+                id: t.id,
+                date: new Date(t.paidAt || t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
+                amount: t.amount,
+                receiptNumber: t.receiptNumber,
+                mode: t.paymentMethod,
+                status: t.status,
+              })),
           };
         }
       } catch {
@@ -121,7 +145,7 @@ export class FeesService {
             lastPaymentDate: sf.transactions[0]
               ? new Date(sf.transactions[0].paidAt || sf.transactions[0].createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
               : 'N/A',
-            transactionRef: sf.transactions[0]?.transactionId || 'TXN-JBIT-2026-0812',
+            transactionRef: sf.transactions[0]?.transactionId || 'N/A',
           }));
         }
       } catch {
@@ -129,70 +153,157 @@ export class FeesService {
       }
     }
 
-    return [
-      {
-        id: 'FEE-01',
-        category: 'Tuition' as const,
-        amountDue: 55000,
-        amountPaid: 55000,
-        status: 'PAID' as const,
-        dueDate: '15 March 2026',
-        lastPaymentDate: '10 April 2026',
-        transactionRef: 'TXN-JBIT-202604-0982',
-      },
-      {
-        id: 'FEE-02',
-        category: 'Hostel & Mess' as const,
-        amountDue: 42000,
-        amountPaid: 42000,
-        status: 'PAID' as const,
-        dueDate: '15 March 2026',
-        lastPaymentDate: '14 March 2026',
-        transactionRef: 'TXN-JBIT-2026-4491',
-      },
-      {
-        id: 'FEE-03',
-        category: 'Examination' as const,
-        amountDue: 3500,
-        amountPaid: 3500,
-        status: 'PAID' as const,
-        dueDate: '20 May 2026',
-        lastPaymentDate: '10 May 2026',
-        transactionRef: 'TXN-JBIT-2026-9912',
-      },
-      {
-        id: 'FEE-04',
-        category: 'Library & Labs' as const,
-        amountDue: 7000,
-        amountPaid: 7000,
-        status: 'PAID' as const,
-        dueDate: '15 March 2026',
-        lastPaymentDate: '12 January 2026',
-        transactionRef: 'TXN-JBIT-2026-0812',
-      },
-    ];
+    return [];
+  }
+
+  private async resolveStudentFee(studentId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: { fees: { include: { feeStructure: true } } },
+    });
+    if (!student) {
+      throw new BadRequestException('Student profile not found for this account.');
+    }
+    const studentFee = student.fees[0];
+    if (!studentFee) {
+      throw new BadRequestException('No fee structure is currently assigned to this student.');
+    }
+    return studentFee;
   }
 
   async createPaymentOrder(studentId: string, amount: number) {
-    if (amount <= 0) {
-      throw new BadRequestException('Payment amount must be greater than zero');
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero.');
     }
-    const orderId = `order_jbit_${Date.now()}`;
+    if (!this.razorpay) {
+      throw new ServiceUnavailableException('Payment gateway is not configured on this server.');
+    }
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException('Fee ledger database is currently unreachable.');
+    }
+
+    const studentFee = await this.resolveStudentFee(studentId);
+    if (amount > studentFee.pendingAmount) {
+      throw new BadRequestException(`Amount exceeds pending dues of ₹${studentFee.pendingAmount}.`);
+    }
+
+    const transactionId = `jbit-${studentFee.id.slice(0, 8)}-${Date.now()}`;
+    let order: { id: string };
+    try {
+      order = await this.razorpay.orders.create({
+        amount: Math.round(amount * 100), // Razorpay expects the smallest currency unit (paise)
+        currency: 'INR',
+        receipt: transactionId,
+      });
+    } catch (err) {
+      this.logger.error(`Razorpay order creation failed: ${err.message}`);
+      throw new ServiceUnavailableException('Unable to create payment order with the gateway. Please try again.');
+    }
+
+    await this.prisma.feeTransaction.create({
+      data: {
+        studentFeeId: studentFee.id,
+        transactionId,
+        amount,
+        status: 'CREATED',
+        gatewayOrderId: order.id,
+      },
+    });
+
     return {
-      orderId,
+      orderId: order.id,
       amount,
       currency: 'INR',
-      keyId: 'rzp_test_mock_jbit_2026',
-      studentId,
-      callbackUrl: '/api/v1/fees/webhook',
+      keyId: this.configService.get<string>('PAYMENT_KEY_ID'),
     };
   }
 
-  async verifyPaymentWebhook(payload: any) {
-    const receiptNumber = `JBIT/REC/2026/${Math.floor(1000 + Math.random() * 9000)}`;
+  /** Verifies the signature the client receives directly from Razorpay Checkout on success. */
+  async verifyPaymentCallback(data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }) {
+    const keySecret = this.configService.get<string>('PAYMENT_KEY_SECRET');
+    if (!keySecret) {
+      throw new ServiceUnavailableException('Payment gateway is not configured on this server.');
+    }
+
+    const expected = createHmac('sha256', keySecret)
+      .update(`${data.razorpay_order_id}|${data.razorpay_payment_id}`)
+      .digest('hex');
+
+    if (!safeEqual(expected, data.razorpay_signature)) {
+      throw new BadRequestException('Payment signature verification failed. This payment could not be trusted.');
+    }
+
+    return this.markTransactionPaid(data.razorpay_order_id, data.razorpay_payment_id);
+  }
+
+  /** Verifies an async Razorpay webhook using the raw request body per Razorpay's documented HMAC scheme. */
+  async verifyPaymentWebhook(rawBody: Buffer, signature: string | undefined) {
+    const webhookSecret = this.configService.get<string>('PAYMENT_WEBHOOK_SECRET');
+    if (!webhookSecret || webhookSecret.includes('mock')) {
+      throw new ServiceUnavailableException('Payment webhook is not configured on this server.');
+    }
+    if (!signature) {
+      throw new BadRequestException('Missing webhook signature.');
+    }
+
+    const expected = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+    if (!safeEqual(expected, signature)) {
+      throw new BadRequestException('Invalid webhook signature.');
+    }
+
+    const event = JSON.parse(rawBody.toString('utf8'));
+    if (event.event === 'payment.captured' || event.event === 'order.paid') {
+      const payment = event.payload?.payment?.entity;
+      if (payment?.order_id && payment?.id) {
+        await this.markTransactionPaid(payment.order_id, payment.id);
+      }
+    }
+
+    return { received: true };
+  }
+
+  private async markTransactionPaid(gatewayOrderId: string, gatewayPaymentId: string) {
+    const txn = await this.prisma.feeTransaction.findFirst({ where: { gatewayOrderId } });
+    if (!txn) {
+      throw new NotFoundException('No transaction found for this payment order.');
+    }
+    if (txn.status === 'SUCCESS') {
+      return {
+        success: true,
+        message: 'Payment already recorded.',
+        receiptNumber: txn.receiptNumber,
+        status: 'SUCCESS',
+      };
+    }
+
+    const receiptNumber = `JBIT/REC/${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`;
+
+    await this.prisma.$transaction([
+      this.prisma.feeTransaction.update({
+        where: { id: txn.id },
+        data: { status: 'SUCCESS', gatewayPaymentId, receiptNumber, paidAt: new Date() },
+      }),
+      this.prisma.studentFee.update({
+        where: { id: txn.studentFeeId },
+        data: {
+          paidAmount: { increment: txn.amount },
+          pendingAmount: { decrement: txn.amount },
+        },
+      }),
+    ]);
+
+    const updatedFee = await this.prisma.studentFee.findUnique({ where: { id: txn.studentFeeId } });
+    if (updatedFee && updatedFee.pendingAmount <= 0 && updatedFee.status !== 'PAID') {
+      await this.prisma.studentFee.update({ where: { id: updatedFee.id }, data: { status: 'PAID', pendingAmount: 0 } });
+    }
+
     return {
       success: true,
-      message: 'Payment verified and credited to institutional ledger',
+      message: 'Payment verified and credited to the institutional ledger.',
       receiptNumber,
       status: 'SUCCESS',
       timestamp: new Date().toISOString(),
@@ -200,17 +311,33 @@ export class FeesService {
   }
 
   async getReceipt(receiptId: string) {
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException('Receipt database is currently unreachable.');
+    }
+
+    const txn = await this.prisma.feeTransaction.findFirst({
+      where: { OR: [{ id: receiptId }, { receiptNumber: receiptId }, { transactionId: receiptId }] },
+      include: {
+        studentFee: {
+          include: { student: { include: { user: true } }, feeStructure: true },
+        },
+      },
+    });
+
+    if (!txn || txn.status !== 'SUCCESS') {
+      throw new NotFoundException('Receipt not found.');
+    }
+
     return {
-      receiptNumber: receiptId,
+      receiptNumber: txn.receiptNumber,
       institution: 'JB Institute of Technology, Dehradun',
       affiliatedTo: 'Veer Madho Singh Bhandari Uttarakhand Technical University',
-      studentName: 'Aarav Sharma',
-      rollNumber: '220102048',
-      amountPaid: 55000,
-      amountInWords: 'Rupees Fifty-Five Thousand Only',
-      feeHead: 'Semester VI Tuition & Examination Fee',
-      paymentMode: 'Online Payment Gateway (Razorpay)',
-      date: '10 April 2026',
+      studentName: txn.studentFee.student.user.name,
+      rollNumber: txn.studentFee.student.rollNumber,
+      amountPaid: txn.amount,
+      feeHead: `Semester ${txn.studentFee.feeStructure.semester} Tuition & Fee Payment`,
+      paymentMode: `Online Payment Gateway (Razorpay) — ${txn.gatewayPaymentId}`,
+      date: (txn.paidAt || txn.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
       authorizedSignatory: 'Finance & Accounts Division',
       isOfficialDigitalReceipt: true,
     };

@@ -9,7 +9,9 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('JBIT-Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  // rawBody is required to verify Razorpay's webhook HMAC signature, which must be
+  // computed over the exact unparsed request bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const isProduction = process.env.NODE_ENV === 'production';
 
   app.use(helmet());
