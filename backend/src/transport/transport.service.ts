@@ -134,17 +134,18 @@ export class TransportService {
   async getLiveTelematics(routeNumber: string) {
     const list = await this.findAllRoutes();
     const route = list.find((r) => r.busNumber.toLowerCase().includes(routeNumber.toLowerCase()) || r.routeTitle.toLowerCase().includes(routeNumber.toLowerCase())) || list[0];
+    // No GPS hardware is installed on the campus fleet yet — this is a scheduled
+    // estimate derived from the route timetable, not a live vehicle position.
     return {
       routeNumber: route.routeTitle,
       busNumber: route.busNumber,
-      isGpsActive: true,
+      isGpsActive: false,
       driverName: route.driverName,
       driverPhone: route.driverPhone,
-      currentLocation: {
-        latitude: 30.3445,
-        longitude: 77.9478,
-        lastUpdated: new Date().toISOString(),
+      scheduledEta: {
         etaMinutes: route.etaToCampusMinutes,
+        basis: 'SCHEDULED',
+        lastUpdated: new Date().toISOString(),
       },
     };
   }

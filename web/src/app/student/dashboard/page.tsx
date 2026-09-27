@@ -323,14 +323,13 @@ export default function StudentDashboardPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="font-bold text-sm text-slate-900">Campus Route 12</h4>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                 </div>
                 <p className="text-xs text-slate-500">Clock Tower ➔ Premnagar ➔ Campus</p>
               </div>
             </div>
             <div className="text-right">
-              <Badge variant="success">En Route</Badge>
-              <span className="text-xs font-semibold text-slate-700 block mt-1">Bus #UK-07-PA-4012</span>
+              <Badge variant="info">Scheduled</Badge>
+              <span className="text-xs font-semibold text-slate-700 block mt-1">No live GPS yet</span>
             </div>
           </div>
 
