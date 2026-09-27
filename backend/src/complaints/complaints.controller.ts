@@ -27,7 +27,7 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Create new grievance ticket' })
   async create(@CurrentUser() user: any, @Body() body: any) {
     return this.complaintsService.create({
-      studentId: user.studentId || user.id,
+      studentId: user.studentId,
       studentName: user.name,
       ...body,
     });

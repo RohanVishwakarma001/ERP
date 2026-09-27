@@ -26,14 +26,14 @@ export class HostelController {
   @Get('my-allocation')
   @ApiOperation({ summary: 'Student: Get room and bed allotment details' })
   async getMyAllocation(@CurrentUser() user: any) {
-    return this.hostelService.getMyAllocation(user.studentId || user.id || 'stu-01');
+    return this.hostelService.getMyAllocation(user.studentId);
   }
 
   @Post('outpass')
   @ApiOperation({ summary: 'Student: Apply for digital hostel outpass' })
   async requestOutpass(@CurrentUser() user: any, @Body() body: any) {
     return this.hostelService.requestOutpass({
-      studentId: user.studentId || user.id || 'stu-01',
+      studentId: user.studentId,
       ...body,
     });
   }

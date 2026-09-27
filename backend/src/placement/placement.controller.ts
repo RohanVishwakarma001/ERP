@@ -32,12 +32,12 @@ export class PlacementController {
   @Post('drives/:id/apply')
   @ApiOperation({ summary: 'Student: Apply to placement drive with eligibility verification' })
   async apply(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.placementService.applyToDrive(id, user.studentId || user.id || 'stu-01');
+    return this.placementService.applyToDrive(id, user.studentId);
   }
 
   @Post('applications/:id/sign-loi')
   @ApiOperation({ summary: 'Student: Digitally accept and sign Letter of Intent (LOI)' })
   async signLoi(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.placementService.signLoi(id, user.studentId || user.id || 'stu-01');
+    return this.placementService.signLoi(id, user.studentId);
   }
 }

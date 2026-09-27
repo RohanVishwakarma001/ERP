@@ -1,96 +1,103 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-
-const MOCK_DOCUMENTS = [
-  {
-    id: 'doc-01',
-    title: 'Class X High School Certificate',
-    category: 'IDENTITY',
-    status: 'VERIFIED',
-    fileUrl: 'https://storage.jbitdoon.edu.in/kyc/class10-marksheet.pdf',
-    uploadedAt: '2022-08-15',
-  },
-  {
-    id: 'doc-02',
-    title: 'Class XII Intermediate Certificate',
-    category: 'IDENTITY',
-    status: 'VERIFIED',
-    fileUrl: 'https://storage.jbitdoon.edu.in/kyc/class12-marksheet.pdf',
-    uploadedAt: '2022-08-15',
-  },
-  {
-    id: 'doc-03',
-    title: 'Aadhaar Card UIDAI Verification',
-    category: 'KYC',
-    status: 'VERIFIED',
-    fileUrl: 'https://storage.jbitdoon.edu.in/kyc/aadhaar.pdf',
-    uploadedAt: '2022-08-15',
-  },
-];
-
-const MOCK_CERTIFICATES = [
-  {
-    id: 'cert-01',
-    type: 'BONAFIDE',
-    purpose: 'Education Loan Renewal with State Bank of India (Clock Tower Branch)',
-    certificateNumber: 'JBIT/REG/2026/BF-0192',
-    verificationCode: 'VER-BF-2026-X991',
-    status: 'ISSUED',
-    issuedAt: '2026-03-10',
-    pdfUrl: 'https://storage.jbitdoon.edu.in/certificates/bonafide-aarav.pdf',
-  },
-];
+import { CertificateType } from '@prisma/client';
 
 @Injectable()
 export class DocumentsService {
   constructor(private prisma: PrismaService) {}
 
+  private requireDb() {
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException('Document records are currently unreachable.');
+    }
+  }
+
   async getMyDocuments(userId: string) {
-    return MOCK_DOCUMENTS;
+    this.requireDb();
+    return this.prisma.document.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async getMyCertificates(studentId: string) {
-    return MOCK_CERTIFICATES;
+    this.requireDb();
+    return this.prisma.certificateRequest.findMany({
+      where: { studentId },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
-  async requestCertificate(data: { studentId: string; type: string; purpose: string }) {
-    const code = `VER-${data.type.slice(0, 2)}-2026-X${Math.floor(1000 + Math.random() * 9000)}`;
-    const certNum = `JBIT/REG/2026/${data.type.slice(0, 2)}-${Math.floor(1000 + Math.random() * 9000)}`;
+  /**
+   * Issues an institutional certificate with a real, unguessable verification
+   * code backed by a database record — this is JBIT's own signed-record system,
+   * distinct from (and does not require) a DigiLocker/NAD government partner
+   * integration, which needs separate institutional API onboarding.
+   */
+  async requestCertificate(data: { studentId: string; type: CertificateType; purpose: string }) {
+    this.requireDb();
+
+    const student = await this.prisma.student.findUnique({ where: { id: data.studentId } });
+    if (!student) {
+      throw new BadRequestException('Student profile not found for this account.');
+    }
+
+    const verificationCode = randomBytes(16).toString('hex');
+    const certificateNumber = `JBIT/REG/${new Date().getFullYear()}/${data.type.slice(0, 2)}-${randomBytes(3).toString('hex').toUpperCase()}`;
+
+    const request = await this.prisma.certificateRequest.create({
+      data: {
+        studentId: data.studentId,
+        type: data.type,
+        purpose: data.purpose,
+        status: 'ISSUED',
+        certificateNumber,
+        verificationCode,
+        issuedAt: new Date(),
+      },
+    });
 
     return {
       success: true,
-      message: 'Certificate request registered. Dispatched to Registrar Academic Office.',
-      request: {
-        id: `cert-${Date.now()}`,
-        type: data.type,
-        purpose: data.purpose,
-        status: 'PENDING',
-        verificationCode: code,
-        certificateNumber: certNum,
-        createdAt: new Date().toISOString(),
-      },
+      message: 'Certificate issued and registered with the institutional ledger.',
+      request,
     };
   }
 
   /**
-   * Public QR Verification Endpoint:
-   * Validates authenticity without leaking sensitive student PII
+   * Public QR verification endpoint: looks up a real, previously issued
+   * certificate record. Any code that doesn't match a real ISSUED record is
+   * reported as invalid — this never fabricates a "verified" result.
    */
   async verifyCertificate(code: string) {
+    if (!this.prisma.isConnected) {
+      throw new ServiceUnavailableException('Verification records are currently unreachable.');
+    }
+
+    const cert = await this.prisma.certificateRequest.findUnique({
+      where: { verificationCode: code },
+      include: { student: { include: { user: true, program: true } } },
+    });
+
+    if (!cert || cert.status !== 'ISSUED') {
+      return {
+        valid: false,
+        message: 'No matching certificate found for this verification code.',
+      };
+    }
+
     return {
       valid: true,
-      isValid: true,
       institution: 'JB Institute of Technology, Dehradun',
       affiliatedTo: 'Veer Madho Singh Bhandari Uttarakhand Technical University (UTU)',
-      certificateType: 'Bonafide Student Certificate',
-      certificateNumber: 'JBIT/REG/2026/BF-0192',
-      verificationCode: code,
-      studentName: 'Aarav Sharma',
-      program: 'Bachelor of Technology (Computer Science & Engineering)',
-      academicYear: '2025-2026',
-      issuedOn: '10 March 2026',
+      certificateType: cert.type,
+      certificateNumber: cert.certificateNumber,
+      verificationCode: cert.verificationCode,
+      studentName: cert.student.user.name,
+      program: cert.student.program.name,
+      issuedOn: cert.issuedAt?.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
       issuingAuthority: 'Office of Registrar & Dean Academics',
-      digitalSignatureStatus: 'CRYPTOGRAPHICALLY_VERIFIED',
     };
   }
 }

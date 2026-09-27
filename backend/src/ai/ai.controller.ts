@@ -16,7 +16,7 @@ export class AiController {
   async chat(@CurrentUser() user: any, @Body('query') query: string) {
     return this.aiService.processCampusQuery(
       user.id,
-      user.studentId || user.id || 'stu-01',
+      user.studentId,
       query,
     );
   }

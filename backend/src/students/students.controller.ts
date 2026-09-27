@@ -36,7 +36,7 @@ export class StudentsController {
   @Roles(UserRole.STUDENT)
   @ApiOperation({ summary: 'Get profile of current logged-in student' })
   async getMe(@CurrentUser() user: any) {
-    return this.studentsService.findById(user.studentId || user.id || 'stu-01');
+    return this.studentsService.findById(user.studentId);
   }
 
   @Get(':id')

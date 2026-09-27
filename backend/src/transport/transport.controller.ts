@@ -20,7 +20,7 @@ export class TransportController {
   @Get('my-pass')
   @ApiOperation({ summary: 'Student: Get digital bus pass and designated stop' })
   async getMyPass(@CurrentUser() user: any) {
-    return this.transportService.getMyPass(user.studentId || user.id || 'stu-01');
+    return this.transportService.getMyPass(user.studentId);
   }
 
   @Get('telematics/:routeNumber')

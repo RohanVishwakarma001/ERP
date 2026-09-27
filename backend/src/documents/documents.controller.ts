@@ -1,8 +1,19 @@
 import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { CertificateType } from '@prisma/client';
 import { DocumentsService } from './documents.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, Public } from '../common/decorators';
+
+class RequestCertificateDto {
+  @IsEnum(CertificateType)
+  type: CertificateType;
+
+  @IsString()
+  @IsNotEmpty()
+  purpose: string;
+}
 
 @ApiTags('Documents & Certificates')
 @Controller('documents')
@@ -21,22 +32,19 @@ export class DocumentsController {
   @ApiBearerAuth()
   @Get('certificates/my')
   @ApiOperation({ summary: 'Get student certificates issued or pending' })
-  async getMyCertificates(@CurrentUser() user: any) {
-    return this.documentsService.getMyCertificates(user.studentId || user.id || 'stu-01');
+  async getMyCertificates(@CurrentUser('studentId') studentId: string) {
+    return this.documentsService.getMyCertificates(studentId);
   }
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('certificates/request')
   @ApiOperation({ summary: 'Student: Apply for Bonafide, Character, NOC, or Migration Certificate' })
-  async requestCertificate(
-    @CurrentUser() user: any,
-    @Body() body: { type: string; purpose: string },
-  ) {
+  async requestCertificate(@CurrentUser('studentId') studentId: string, @Body() dto: RequestCertificateDto) {
     return this.documentsService.requestCertificate({
-      studentId: user.studentId || user.id || 'stu-01',
-      type: body.type || 'BONAFIDE',
-      purpose: body.purpose || 'Official verification',
+      studentId,
+      type: dto.type,
+      purpose: dto.purpose,
     });
   }
 

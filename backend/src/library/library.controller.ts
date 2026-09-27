@@ -20,7 +20,7 @@ export class LibraryController {
   @Get('my-books')
   @ApiOperation({ summary: 'Student: View active borrowed books, due dates, and fines' })
   async getMyBooks(@CurrentUser() user: any) {
-    return this.libraryService.getMyIssuedBooks(user.studentId || user.id || 'stu-01');
+    return this.libraryService.getMyIssuedBooks(user.studentId);
   }
 
   @Post('issue')

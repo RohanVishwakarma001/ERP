@@ -32,7 +32,7 @@ export class ExaminationsController {
   @Get('grade-card')
   @ApiOperation({ summary: 'Student: Get academic grade card with SGPA/CGPA' })
   async getGradeCardWeb(@CurrentUser() user: any) {
-    return this.examsService.getStudentGradeCard(user.studentId || user.id || 'stu-01');
+    return this.examsService.getStudentGradeCard(user.studentId);
   }
 
   @Post('seating-matrix/generate')
@@ -44,7 +44,7 @@ export class ExaminationsController {
   @Get('grades/me')
   @ApiOperation({ summary: 'Student: Get semester grade card with SGPA and DigiLocker status' })
   async getMyGradeCard(@CurrentUser() user: any) {
-    return this.examsService.getStudentGradeCard(user.studentId || user.id || 'stu-01');
+    return this.examsService.getStudentGradeCard(user.studentId);
   }
 
   @Get('grades/:studentId')
