@@ -8,7 +8,7 @@ export const apiClient: AxiosInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 15000,
+  timeout: 20000,
 });
 
 // Request interceptor to attach the in-memory JWT access token (never localStorage).
@@ -61,7 +61,26 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retried?: boolean; _transientRetry?: boolean })
+      | undefined;
+
+    // A serverless Postgres instance (Neon) that scaled to zero after being idle takes
+    // a few seconds to wake on the next query — surfaces as a network timeout, a 503
+    // from the backend's DB-connectivity guard, or a 401 with a "temporarily" message
+    // if it happens mid JWT validation. Retry once after a short delay rather than
+    // failing the user's first request of a session.
+    const errBody = error.response?.data as { error?: { message?: string } } | undefined;
+    const isTransientDbWakeup =
+      !error.response ||
+      error.response.status === 503 ||
+      (error.response.status === 401 && errBody?.error?.message?.toLowerCase().includes("temporarily"));
+
+    if (isTransientDbWakeup && originalRequest && !originalRequest._transientRetry) {
+      originalRequest._transientRetry = true;
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      return apiClient(originalRequest);
+    }
 
     if (error.response) {
       const status = error.response.status;

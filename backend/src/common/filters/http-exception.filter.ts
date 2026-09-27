@@ -7,6 +7,16 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
+import { Prisma } from '@prisma/client';
+
+function isPrismaConnectivityError(exception: unknown): boolean {
+  return (
+    exception instanceof Prisma.PrismaClientInitializationError ||
+    exception instanceof Prisma.PrismaClientRustPanicError ||
+    (exception instanceof Prisma.PrismaClientKnownRequestError &&
+      ['P1001', 'P1002', 'P1008', 'P1017'].includes(exception.code))
+  );
+}
 
 @Catch()
 export class GlobalHttpExceptionFilter implements ExceptionFilter {
@@ -34,6 +44,14 @@ export class GlobalHttpExceptionFilter implements ExceptionFilter {
         errorCode = resObj.error || this.getErrorCodeFromStatus(status);
         details = resObj.details || (Array.isArray(resObj.message) ? resObj.message : null);
       }
+    } else if (isPrismaConnectivityError(exception)) {
+      // Transient DB unreachability (e.g. a serverless Postgres instance waking from
+      // idle) is not a bug — never leak the raw Prisma message (it includes the DB
+      // host) and report it as a retryable 503, not a 500.
+      status = HttpStatus.SERVICE_UNAVAILABLE;
+      errorCode = 'SERVICE_UNAVAILABLE';
+      message = 'The database is temporarily unavailable. Please retry in a few seconds.';
+      this.logger.warn(`DB connectivity error at ${request.method} ${request.url}: ${(exception as Error).message}`);
     } else if (exception instanceof Error) {
       message = exception.message;
       this.logger.error(`Unhandled Exception at ${request.method} ${request.url}: ${exception.stack}`);

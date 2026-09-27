@@ -37,7 +37,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         },
       });
     } catch {
-      throw new UnauthorizedException('Unable to verify session at this time.');
+      // A DB connectivity blip (e.g. a serverless Postgres instance waking from
+      // idle) — distinct wording so clients can tell this apart from a genuinely
+      // invalid/expired token and retry instead of forcing a re-login.
+      throw new UnauthorizedException('Session verification is temporarily unavailable. Please retry.');
     }
 
     if (!user || user.status !== 'ACTIVE' || user.deletedAt) {
