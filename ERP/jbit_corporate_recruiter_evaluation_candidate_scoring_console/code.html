@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "text-body": "#334155", "surface-variant": "#d3e4fe", "surface-container-high": "#dce9ff", "tertiary-container": "#003c5e", "text-muted": "#64748B", "surface-dim": "#cbdbf5", "error-container": "#ffdad6", "on-surface-variant": "#42474e", "surface-container-highest": "#d3e4fe", "on-error-container": "#93000a", "on-error": "#ffffff", "tertiary-fixed": "#cce5ff", "inverse-surface": "#213145", "status-error": "#EF4444", "inverse-primary": "#a3caf6", "tertiary-fixed-dim": "#93ccff", "tertiary": "#00263d", "primary": "#002541", "status-warning": "#F59E0B", "border-strong": "#CBD5E1", "status-info": "#0284C7", "border-subtle": "#E2E8F0", "text-display": "#0F172A", "on-surface": "#0b1c30", "primary-fixed": "#d0e4ff", "on-tertiary-container": "#49a9ef", "surface-container-low": "#eff4ff", "surface-tint": "#3a6188", "on-primary": "#ffffff", "surface-canvas": "#F8FAFC", "surface-bright": "#f8f9ff", "on-primary-container": "#7fa6d0", "status-success": "#10B981", "on-secondary": "#ffffff", "on-secondary-fixed": "#410002", "surface-container": "#e5eeff", "secondary-fixed-dim": "#ffb4ab", "on-secondary-container": "#fffbff", "on-tertiary": "#ffffff", "on-primary-fixed": "#001d35", "surface-pure": "#FFFFFF", "secondary-fixed": "#ffdad6", "surface": "#f8f9ff", "primary-fixed-dim": "#a3caf6", "error": "#ba1a1a", "secondary-container": "#e02928", "on-secondary-fixed-variant": "#93000b", "outline": "#73777f", "on-primary-fixed-variant": "#1f496f", "inverse-on-surface": "#eaf1ff", "outline-variant": "#c2c7cf", "primary-container": "#0b3b60", "surface-container-lowest": "#ffffff", "secondary": "#bb0112", "on-tertiary-fixed-variant": "#004b73", "on-background": "#0b1c30", "on-tertiary-fixed": "#001d31", "surface-subtle": "#F1F5F9", "background": "#f8f9ff" }, "borderRadius": { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, "spacing": { "margin-desktop": "2.5rem", "gutter-lg": "2rem", "gutter-sm": "1rem", "space-xs": "0.25rem", "gutter": "1.5rem", "margin": "2rem", "space-xl": "2rem", "space-md": "1rem", "space-sm": "0.5rem", "margin-mobile": "1rem", "space-lg": "1.5rem" }, "fontFamily": { "label-md": ["Inter"], "headline-xl-mobile": ["Plus Jakarta Sans"], "body-lg": ["Inter"], "title-sm": ["Inter"], "headline-xl": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "tabular-data": ["Inter"], "headline-lg-mobile": ["Plus Jakarta Sans"], "body-md": ["Inter"], "headline-md": ["Plus Jakarta Sans"], "body-sm": ["Inter"], "label-sm": ["Inter"] }, "fontSize": { "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }], "headline-xl-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }], "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }], "title-sm": ["15px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "headline-xl": ["36px", { "lineHeight": "44px", "letterSpacing": "-0.025em", "fontWeight": "700" }], "headline-lg": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "tabular-data": ["13px", { "lineHeight": "18px", "fontWeight": "500" }], "headline-lg-mobile": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }], "headline-md": ["18px", { "lineHeight": "26px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "body-sm": ["13px", { "lineHeight": "18px", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.04em", "fontWeight": "600" }] } } } };</script></head><body class="bg-surface font-body-md text-text-body antialiased"><header class="fixed top-0 left-0 right-0 h-16 bg-surface-pure/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-50"><div class="w-full h-16 px-gutter-lg flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-md"><img alt="Official JB Institute of Technology (JBIT) institutional logo badge. Clean geometric emblem with a stylized graduation torch and book crest, deep royal blue and crimson red accents with clean crisp typography 'JBIT DEHRADUN'.. Brand logo. - Primary color: #0b3b60
+- Font: plusJakartaSans
+- Mode: light
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UcfHOeid_-p8Oixg10r7WTA2AIkDuzrvU6gUModSdyRlO1OFhVsW1dvsxDtGGCrnnOi4b3UJcEvkS9duZP2hWE_AnfD1WUnQgWhrY8Lrewq9GUe4QnPF-ha6STUGOJSMFQe2P2S1cIQ5gwK-Gpk5HEXNU_AW-XHAmb6Hccr30LhoXVfXJCr7bqOCRD546VNawnlwniiEs9y2aSGIzkyaW4gFTvqpN4YP8uMb3LY2JGZVY8YkWfAXSpD6w"/><div class="flex flex-col"><span class="font-headline-md text-headline-md font-bold text-primary tracking-tight leading-none">JBIT Corporate Relations</span><span class="font-label-sm text-label-sm text-text-muted mt-space-xs leading-none">Training &amp; Placement Cell (TPC) • Evaluation System</span></div></div><div class="hidden xl:flex items-center gap-space-md"><div class="flex items-center gap-space-xs bg-surface-container-low px-space-md py-space-xs rounded-lg"><span class="w-2 h-2 rounded-full bg-status-success"></span><span class="font-label-md text-label-md text-primary font-semibold">Amazon Web Services — Campus Hiring 2025</span></div><div class="flex items-center gap-space-xs bg-surface-subtle px-space-md py-space-xs rounded-lg"><span class="material-symbols-outlined text-text-muted text-[18px]">group_work</span><span class="font-label-md text-label-md text-text-display font-medium">Panel #02 • Technical Architecture &amp; Systems</span></div><div class="flex items-center gap-space-xs bg-surface-container-high px-space-md py-space-xs rounded-lg"><span class="material-symbols-outlined text-primary text-[18px]">timer</span><span class="font-tabular-data text-tabular-data text-primary font-semibold tracking-wider">Slot: 00:42:18</span></div></div><div class="flex items-center gap-space-md"><div class="relative hidden md:block"><span class="material-symbols-outlined absolute left-space-sm top-1/2 -translate-y-1/2 text-text-muted text-[18px]">search</span><input class="w-56 h-[38px] pl-8 pr-space-md bg-surface-pure rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Search candidate, roll, USN..." type="text"/></div><button class="relative p-space-xs text-text-muted hover:text-on-surface rounded-lg hover:bg-surface-subtle transition-colors" type="button"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-1 right-1 w-2 h-2 rounded-full bg-secondary"></span></button><div class="flex items-center gap-space-sm pl-space-sm"><div class="flex flex-col text-right hidden sm:flex"><span class="font-label-md text-label-md text-text-display font-semibold">Vikramaditya Roy</span><span class="font-label-sm text-label-sm text-text-muted">Lead Technical Assessor</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><aside class="fixed left-0 top-16 bottom-0 w-72 bg-surface-pure shadow-[0_1px_8px_rgba(0,0,0,0.03)] z-40 flex flex-col justify-between pt-space-md pb-space-lg"><div class="flex-1 overflow-y-auto px-space-md"><div class="px-space-sm py-space-xs mb-space-sm"><span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-semibold">Evaluation Workspace</span></div><nav class="flex flex-col gap-space-xs" data-active-classes="bg-primary-container text-on-primary font-semibold rounded-lg"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="active-drive-console" href="#"><span class="material-symbols-outlined text-[20px]">hub</span><span>Active Drive Console</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-space-sm transition-colors bg-primary-container text-on-primary font-semibold rounded-lg" data-path="candidate-assessment-queue" href="#"><span class="material-symbols-outlined text-[20px]">format_list_bulleted</span><span>Candidate Assessment Queue</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="live-interview-room" href="#"><span class="material-symbols-outlined text-[20px]">video_camera_front</span><span>Live Interview Room</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="rubric-evaluation-scorecards" href="#"><span class="material-symbols-outlined text-[20px]">fact_check</span><span>Rubric &amp; Scorecards</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="panel-feedback-sync" href="#"><span class="material-symbols-outlined text-[20px]">sync_alt</span><span>Panel Feedback Sync</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="offer-recommendations-loi-queue" href="#"><span class="material-symbols-outlined text-[20px]">workspace_premium</span><span>Offer &amp; LOI Recommendations</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded-lg text-text-body hover:bg-surface-subtle hover:text-on-surface transition-colors font-body-md text-body-md" data-path="campus-tpc-coordination" href="#"><span class="material-symbols-outlined text-[20px]">support_agent</span><span>Campus TPC Coordination</span></a></nav></div><div class="px-space-md pt-space-md"><div class="bg-surface-canvas p-space-md rounded-lg flex flex-col gap-space-xs"><div class="flex items-center justify-between"><span class="font-label-sm text-label-sm text-text-muted">Assessor Desk</span><span class="font-label-sm text-label-sm font-semibold text-status-success">Sync Active</span></div><p class="font-body-sm text-body-sm text-text-body font-medium leading-snug">Room Lab-04 • CSE Dept Wing B</p><div class="flex items-center gap-space-xs mt-space-xs"><span class="material-symbols-outlined text-text-muted text-[16px]">call</span><span class="font-label-sm text-label-sm text-primary font-semibold">TPC Hotline: Ext 402</span></div></div></div></aside><div class="pl-72"><main class="w-full pt-16 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- DRIVE HERO & LIVE METRICS BAR -->
+<section class="w-full bg-surface-pure shadow-sm px-gutter py-space-md mb-space-lg">
+<div class="max-w-[1600px] mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-space-md">
+<!-- Left: Breadcrumbs + Drive Identity -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs text-text-muted font-label-sm text-label-sm uppercase tracking-wider">
+<span class="hover:text-primary cursor-pointer transition-colors">Active Campus Drives</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-primary font-semibold">Amazon Web Services (AWS)</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span>Technical Round 2</span>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-on-surface font-semibold">Live Panel Room B-204</span>
+</div>
+<div class="flex flex-wrap items-center gap-space-sm pt-space-xs">
+<h1 class="font-headline-lg text-headline-lg font-bold text-text-display tracking-tight leading-tight">
+            AWS Campus Drive 2025
+          </h1>
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-sm font-label-md bg-primary-container text-on-primary">
+<span class="material-symbols-outlined text-[14px]">stars</span>
+            Super Dream Track (₹18.5 LPA)
+          </span>
+<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-label-sm font-label-md bg-surface-container-high text-primary">
+<span class="w-2 h-2 rounded-full bg-status-success animate-pulse"></span>
+            Proctored Session #LIVE-042
+          </span>
+</div>
+</div>
+<!-- Right: Panelists + Action Indicators -->
+<div class="flex flex-wrap items-center gap-space-md">
+<!-- Dual Evaluators Info -->
+<div class="flex items-center gap-space-md bg-surface-canvas p-space-sm rounded-xl">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary font-bold text-label-md">
+              MV
+            </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-text-display font-semibold">Marcus Vance</span>
+<span class="font-label-sm text-label-sm text-text-muted">Lead Cloud Architect (AWS)</span>
+</div>
+</div>
+<span class="text-border-strong font-label-md">•</span>
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-full bg-surface-dim flex items-center justify-center text-primary font-bold text-label-md">
+              VT
+            </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-text-display font-semibold">Er. Vikas Tyagi</span>
+<span class="font-label-sm text-label-sm text-text-muted">JBIT CSE Faculty Observer</span>
+</div>
+</div>
+</div>
+<!-- Timer & Emergency TPC -->
+<div class="flex items-center gap-space-sm">
+<div class="flex items-center gap-space-xs bg-surface-container-low px-space-md py-space-xs rounded-lg">
+<span class="material-symbols-outlined text-secondary text-[18px] animate-pulse">radio_button_checked</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Slot Elapsed</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-bold">42m 18s / 60m</span>
+</div>
+</div>
+<button class="flex items-center gap-space-xs bg-surface-pure hover:bg-surface-subtle text-status-error px-space-md py-space-sm rounded-lg font-label-md text-label-md transition-colors shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">e911_emergency</span>
+<span>TPC Hotline</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- MAIN THREE-COLUMN WORKSPACE -->
+<div class="max-w-[1600px] w-full mx-auto px-gutter grid grid-cols-1 lg:grid-cols-12 gap-space-lg items-start pb-space-xl">
+<!-- ========================================== -->
+<!-- COLUMN 1: CANDIDATE ROSTER & QUEUE (3 Cols) -->
+<!-- ========================================== -->
+<div class="lg:col-span-3 flex flex-col gap-space-md">
+<!-- Queue Header Card -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">groups</span>
+<span class="font-headline-md text-headline-md font-bold text-text-display">Live Queue</span>
+</div>
+<span class="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-surface-subtle text-text-muted">
+            12 Candidates Total
+          </span>
+</div>
+<!-- Search Bar -->
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-[16px]">search</span>
+<input class="w-full h-9 pl-8 pr-3 bg-surface-canvas rounded-lg font-body-sm text-body-sm text-on-surface placeholder:text-text-muted focus:outline-none focus:bg-surface-pure shadow-inner" placeholder="Search Roll, USN, Name..." type="text"/>
+</div>
+<!-- Filter Pill Chips -->
+<div class="flex flex-wrap gap-1.5 pt-space-xs">
+<button class="px-2.5 py-1 rounded-full text-label-sm font-label-md bg-primary-container text-on-primary font-semibold">
+            In Eval (1)
+          </button>
+<button class="px-2.5 py-1 rounded-full text-label-sm font-label-md bg-surface-canvas text-text-body hover:bg-surface-subtle">
+            Next Up (3)
+          </button>
+<button class="px-2.5 py-1 rounded-full text-label-sm font-label-md bg-surface-canvas text-text-body hover:bg-surface-subtle">
+            Done (8)
+          </button>
+</div>
+</div>
+<!-- ACTIVE CANDIDATE CARD (SELECTED) -->
+<div class="bg-surface-pure rounded-xl shadow-sm p-space-md flex flex-col gap-space-md relative overflow-hidden">
+<div class="absolute top-0 left-0 bottom-0 w-1.5 bg-primary-container"></div>
+<div class="flex items-start justify-between">
+<div class="flex items-center gap-space-sm">
+<div class="relative">
+<div class="w-12 h-12 rounded-xl bg-surface-variant flex items-center justify-center font-headline-md text-headline-md font-bold text-primary">
+                RV
+              </div>
+<span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-status-success ring-2 ring-surface-pure"></span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-md text-headline-md font-bold text-text-display">Rohan Verma</span>
+<span class="material-symbols-outlined text-status-success text-[16px]" title="Institutional Verified">verified</span>
+</div>
+<span class="font-label-sm text-label-sm text-text-muted">Roll: 2201040189 • CSE Sem-8</span>
+</div>
+</div>
+<span class="px-2 py-0.5 rounded-full text-label-sm font-label-md bg-surface-container-high text-primary font-semibold">
+            Room B-204
+          </span>
+</div>
+<!-- Academic & Placement Metadata Grid -->
+<div class="grid grid-cols-2 gap-space-xs p-space-sm bg-surface-canvas rounded-lg">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Verified CGPA</span>
+<span class="font-tabular-data text-tabular-data font-bold text-text-display">8.92 / 10.0</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Attendance</span>
+<span class="font-tabular-data text-tabular-data font-bold text-status-success">84.6%</span>
+</div>
+<div class="flex flex-col pt-1">
+<span class="font-label-sm text-label-sm text-text-muted">Backlog Count</span>
+<span class="font-tabular-data text-tabular-data font-semibold text-text-display">0 Active</span>
+</div>
+<div class="flex flex-col pt-1">
+<span class="font-label-sm text-label-sm text-text-muted">ATS Match</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">94% SRE/Cloud</span>
+</div>
+</div>
+<!-- Prior Rounds Status -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-semibold">Drive Progression</span>
+<div class="flex items-center justify-between text-body-sm text-body-sm p-space-xs bg-surface-subtle rounded-md">
+<span class="font-medium text-text-body">1. CBT Cognitive Aptitude</span>
+<span class="font-tabular-data text-tabular-data font-bold text-status-success">92% (Top 1%)</span>
+</div>
+<div class="flex items-center justify-between text-body-sm text-body-sm p-space-xs bg-surface-subtle rounded-md">
+<span class="font-medium text-text-body">2. Tech R1 (Coding &amp; Core)</span>
+<span class="font-label-sm text-label-sm font-semibold text-primary">Strong Hire</span>
+</div>
+<div class="flex items-center justify-between text-body-sm text-body-sm p-space-xs bg-surface-variant rounded-md">
+<span class="font-semibold text-primary">3. Tech R2 (Live Systems)</span>
+<span class="font-label-sm text-label-sm font-bold text-primary animate-pulse">In Progress</span>
+</div>
+</div>
+<!-- Candidate Token Tag -->
+<div class="flex items-center justify-between pt-space-xs text-text-muted font-label-sm text-label-sm">
+<span>Token: #JBIT-AWS-042</span>
+<span>Venue: Lab-04 / Desk 08</span>
+</div>
+</div>
+<!-- QUEUED CANDIDATES LIST -->
+<div class="flex flex-col gap-space-sm">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-semibold px-space-xs">Upcoming in Panel</span>
+<!-- Next 1: Priya Negi -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm hover:shadow transition-shadow flex flex-col gap-space-xs cursor-pointer group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center font-label-md text-label-md font-semibold text-text-display group-hover:bg-surface-variant">
+                PN
+              </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-text-display group-hover:text-primary transition-colors">Priya Negi</span>
+<span class="font-label-sm text-label-sm text-text-muted">Roll: 2201040194</span>
+</div>
+</div>
+<span class="font-tabular-data text-tabular-data font-semibold text-primary bg-surface-subtle px-2 py-0.5 rounded">
+              03:30 PM
+            </span>
+</div>
+<div class="flex items-center justify-between text-label-sm text-label-sm text-text-muted pt-1">
+<span>CGPA: 8.85 • Fullstack Cloud</span>
+<span class="text-status-success font-medium">Ready in Lobby</span>
+</div>
+</div>
+<!-- Next 2: Kabir Singh Bhatia -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm hover:shadow transition-shadow flex flex-col gap-space-xs cursor-pointer group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center font-label-md text-label-md font-semibold text-text-display group-hover:bg-surface-variant">
+                KB
+              </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-text-display group-hover:text-primary transition-colors">Kabir Singh Bhatia</span>
+<span class="font-label-sm text-label-sm text-text-muted">Roll: 2201040195</span>
+</div>
+</div>
+<span class="font-tabular-data text-tabular-data font-semibold text-text-muted bg-surface-subtle px-2 py-0.5 rounded">
+              04:15 PM
+            </span>
+</div>
+<div class="flex items-center justify-between text-label-sm text-label-sm text-text-muted pt-1">
+<span>CGPA: 7.80 • Kubernetes &amp; DevOps</span>
+<span class="text-text-muted">Aptitude: 88%</span>
+</div>
+</div>
+<!-- Next 3: Sneha Bisht -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm hover:shadow transition-shadow flex flex-col gap-space-xs cursor-pointer group">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center font-label-md text-label-md font-semibold text-text-display group-hover:bg-surface-variant">
+                SB
+              </div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-text-display group-hover:text-primary transition-colors">Sneha Bisht</span>
+<span class="font-label-sm text-label-sm text-text-muted">Roll: 2201040196</span>
+</div>
+</div>
+<span class="font-tabular-data text-tabular-data font-semibold text-text-muted bg-surface-subtle px-2 py-0.5 rounded">
+              05:00 PM
+            </span>
+</div>
+<div class="flex items-center justify-between text-label-sm text-label-sm text-text-muted pt-1">
+<span>CGPA: 8.62 • ECE Embedded/IoT</span>
+<span class="text-text-muted">Pre-screened</span>
+</div>
+</div>
+</div>
+<!-- Live Room Network & Camera Feeds -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-semibold">Proctoring Telemetry</span>
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="w-2 h-2 rounded-full bg-status-success"></span> Dual Camera AI Feed
+          </span>
+<span class="font-tabular-data text-tabular-data text-text-muted">1080p @ 60fps</span>
+</div>
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="w-2 h-2 rounded-full bg-status-success"></span> Screen Mirror Sync
+          </span>
+<span class="font-tabular-data text-tabular-data text-text-muted">Latency: 12ms</span>
+</div>
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="w-2 h-2 rounded-full bg-status-success"></span> Audio Noise Isolation
+          </span>
+<span class="font-label-sm text-label-sm text-status-success font-semibold">Locked</span>
+</div>
+</div>
+</div>
+<!-- ========================================== -->
+<!-- COLUMN 2: LIVE TECHNICAL WORKBENCH (5 Cols) -->
+<!-- ========================================== -->
+<div class="lg:col-span-5 flex flex-col gap-space-md">
+<!-- Sub-Navigation Tab Strip -->
+<div class="bg-surface-pure p-space-xs rounded-xl shadow-sm flex items-center gap-space-xs overflow-x-auto">
+<button class="px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold bg-primary-container text-on-primary whitespace-nowrap">
+          Technical Architecture &amp; Code
+        </button>
+<button class="px-space-md py-space-xs rounded-lg font-label-md text-label-md text-text-body hover:bg-surface-subtle transition-colors whitespace-nowrap">
+          Candidate Dossier &amp; Resume
+        </button>
+<button class="px-space-md py-space-xs rounded-lg font-label-md text-label-md text-text-body hover:bg-surface-subtle transition-colors whitespace-nowrap">
+          UTU Transcripts &amp; Certs
+        </button>
+<button class="px-space-md py-space-xs rounded-lg font-label-md text-label-md text-text-body hover:bg-surface-subtle transition-colors whitespace-nowrap">
+          Whiteboard Canvas
+        </button>
+</div>
+<!-- Problem Statement Brief Card -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm font-semibold uppercase tracking-wider text-primary">AWS Architecture Problem 2.4</span>
+<span class="px-2 py-0.5 rounded text-label-sm font-label-md bg-surface-canvas text-text-muted">Complexity: High</span>
+</div>
+<h2 class="font-headline-md text-headline-md font-bold text-text-display">
+          High-Concurrency Distributed S3 File Upload Pipeline with Dead-Letter Queue &amp; Token Bucket Limiter
+        </h2>
+<p class="font-body-sm text-body-sm text-text-body leading-relaxed">
+          Design an ingestion worker pool that processes multi-part chunked payloads to S3, with backpressure control using AWS SQS DLQ and custom exponential backoff jitter in Python (asyncio).
+        </p>
+</div>
+<!-- Live Code Editor Simulation -->
+<div class="bg-primary text-surface-pure rounded-xl shadow-sm overflow-hidden flex flex-col">
+<!-- Editor Header -->
+<div class="bg-primary-container px-space-md py-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-sm">
+<span class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-secondary"></span>
+<span class="w-2.5 h-2.5 rounded-full bg-status-warning"></span>
+<span class="w-2.5 h-2.5 rounded-full bg-status-success"></span>
+</span>
+<span class="font-label-md text-label-md text-surface-variant font-medium">pipeline_worker_async.py</span>
+</div>
+<div class="flex items-center gap-space-xs text-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[16px] text-status-success">sync</span>
+<span>Live Stream active</span>
+</div>
+</div>
+<!-- Code Block -->
+<div class="p-space-md font-mono text-[12px] leading-relaxed overflow-x-auto text-surface-bright bg-[#001b31]">
+<p class="text-text-muted"># Submitted at 00:34:12 - Rohan Verma (Python 3.11 / aiobotocore)</p>
+<p><span class="text-secondary-fixed">import</span> asyncio, botocore, random</p>
+<p><span class="text-secondary-fixed">from</span> aiobotocore.session <span class="text-secondary-fixed">import</span> get_session</p>
+<br/>
+<p><span class="text-primary-fixed-dim">class</span> <span class="text-surface-variant font-bold">ResilientS3Uploader</span>:</p>
+<p>    <span class="text-secondary-fixed">def</span> <span class="text-inverse-primary">__init__</span>(self, bucket_name: str, max_concurrency: int = 16):</p>
+<p>        self.bucket = bucket_name</p>
+<p>        self.sem = asyncio.Semaphore(max_concurrency)</p>
+<p>        self.session = get_session()</p>
+<br/>
+<p>    <span class="text-secondary-fixed">async def</span> <span class="text-inverse-primary">upload_with_backoff</span>(self, key: str, payload: bytes, max_retries: int = 5):</p>
+<p>        <span class="text-secondary-fixed">async with</span> self.sem:</p>
+<p>            <span class="text-secondary-fixed">for</span> attempt <span class="text-secondary-fixed">in</span> range(max_retries):</p>
+<p>                <span class="text-secondary-fixed">try</span>:</p>
+<p>                    <span class="text-secondary-fixed">async with</span> self.session.create_client(<span class="text-status-success">'s3'</span>) <span class="text-secondary-fixed">as</span> client:</p>
+<p>                        <span class="text-secondary-fixed">await</span> client.put_object(Bucket=self.bucket, Key=key, Body=payload)</p>
+<p>                        <span class="text-secondary-fixed">return True</span></p>
+<p>                <span class="text-secondary-fixed">except</span> botocore.exceptions.ClientError <span class="text-secondary-fixed">as</span> e:</p>
+<p>                    jitter = random.uniform(0, 0.5)</p>
+<p>                    <span class="text-secondary-fixed">await</span> asyncio.sleep((2 ** attempt) + jitter)</p>
+<p>            <span class="text-secondary-fixed">await</span> self.push_to_dlq(key, payload)</p>
+</div>
+<!-- Automated Execution Diagnostics -->
+<div class="bg-surface-pure text-text-body p-space-sm flex items-center justify-between text-body-sm text-body-sm border-t border-surface-subtle">
+<div class="flex items-center gap-space-sm">
+<span class="inline-flex items-center gap-1 text-status-success font-semibold">
+<span class="material-symbols-outlined text-[16px]">check_circle</span>
+              14/14 Unit Tests Passed
+            </span>
+<span class="text-text-muted">•</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-medium">p99: 84ms</span>
+<span class="text-text-muted">•</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-medium">Mem: 38.2 MB</span>
+</div>
+<button class="font-label-md text-label-md text-primary font-semibold hover:underline flex items-center gap-1">
+<span>Re-run Test Suite</span>
+<span class="material-symbols-outlined text-[16px]">play_arrow</span>
+</button>
+</div>
+</div>
+<!-- Architecture Topology Diagram Widget (Thumbnail) -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-semibold">Candidate Whiteboard Snapshot</span>
+<span class="font-label-sm text-label-sm text-primary font-semibold cursor-pointer">Expand Fullscreen</span>
+</div>
+<!-- Architectural diagram visual -->
+<div class="w-full bg-surface-canvas rounded-lg p-space-md flex flex-col items-center justify-center relative overflow-hidden">
+<svg class="w-full max-w-[480px] h-32" fill="none" viewbox="0 0 480 120" xmlns="http://www.w3.org/2000/svg">
+<!-- Node: API Gateway -->
+<rect fill="#0B3B60" height="50" rx="8" width="80" x="20" y="35"></rect>
+<text fill="#FFFFFF" font-family="Inter" font-size="10" font-weight="600" text-anchor="middle" x="60" y="60">API Gateway</text>
+<text fill="#a3caf6" font-family="Inter" font-size="8" text-anchor="middle" x="60" y="74">HTTP POST</text>
+<!-- Line 1 -->
+<line stroke="#0B3B60" stroke-dasharray="4 2" stroke-width="2" x1="100" x2="140" y1="60" y2="60"></line>
+<polygon fill="#0B3B60" points="140,57 146,60 140,63"></polygon>
+<!-- Node: SQS Buffer -->
+<rect fill="#e5eeff" height="50" rx="8" width="80" x="146" y="35"></rect>
+<text fill="#002541" font-family="Inter" font-size="10" font-weight="600" text-anchor="middle" x="186" y="60">SQS FIFO</text>
+<text fill="#64748B" font-family="Inter" font-size="8" text-anchor="middle" x="186" y="74">Backpressure</text>
+<!-- Line 2 -->
+<line stroke="#0B3B60" stroke-width="2" x1="226" x2="266" y1="60" y2="60"></line>
+<polygon fill="#0B3B60" points="266,57 272,60 266,63"></polygon>
+<!-- Node: Lambda Worker Pool -->
+<rect fill="#0B3B60" height="50" rx="8" width="90" x="272" y="35"></rect>
+<text fill="#FFFFFF" font-family="Inter" font-size="10" font-weight="600" text-anchor="middle" x="317" y="60">Lambda Ingest</text>
+<text fill="#a3caf6" font-family="Inter" font-size="8" text-anchor="middle" x="317" y="74">Async Boto3</text>
+<!-- Line 3 to S3 -->
+<line stroke="#10B981" stroke-width="2" x1="362" x2="398" y1="50" y2="40"></line>
+<polygon fill="#10B981" points="398,37 404,40 397,43"></polygon>
+<!-- Line 3 to DLQ -->
+<line stroke="#ba1a1a" stroke-dasharray="2 2" stroke-width="2" x1="362" x2="398" y1="70" y2="85"></line>
+<polygon fill="#ba1a1a" points="398,82 404,85 397,88"></polygon>
+<!-- Target: S3 -->
+<rect fill="#10B981" height="35" rx="6" width="60" x="404" y="20"></rect>
+<text fill="#FFFFFF" font-family="Inter" font-size="9" font-weight="600" text-anchor="middle" x="434" y="42">S3 Bucket</text>
+<!-- Target: DLQ -->
+<rect fill="#ba1a1a" height="35" rx="6" width="60" x="404" y="70"></rect>
+<text fill="#FFFFFF" font-family="Inter" font-size="9" font-weight="600" text-anchor="middle" x="434" y="92">DLQ Storage</text>
+</svg>
+</div>
+</div>
+<!-- Live Interview Scratchpad & Chronological Notes -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-headline-md text-headline-md font-bold text-text-display">Assessor Live Scratchpad</span>
+<span class="text-label-sm font-label-md text-text-muted">Auto-saved 10s ago</span>
+</div>
+<div class="flex flex-col gap-space-xs">
+<div class="p-space-xs rounded bg-surface-canvas flex items-start gap-space-xs text-body-sm text-body-sm">
+<span class="font-tabular-data text-tabular-data text-primary font-bold whitespace-nowrap">[00:15]</span>
+<span class="text-text-body">Strong grasp on exponential backoff and jitter algorithms. Addressed AWS SDK retries proactively.</span>
+</div>
+<div class="p-space-xs rounded bg-surface-canvas flex items-start gap-space-xs text-body-sm text-body-sm">
+<span class="font-tabular-data text-tabular-data text-primary font-bold whitespace-nowrap">[00:28]</span>
+<span class="text-text-body">Successfully identified DynamoDB hot partition pitfall and re-keyed with composite tenant UUID partition key.</span>
+</div>
+<div class="p-space-xs rounded bg-surface-canvas flex items-start gap-space-xs text-body-sm text-body-sm">
+<span class="font-tabular-data text-tabular-data text-primary font-bold whitespace-nowrap">[00:39]</span>
+<span class="text-text-body">Articulated VPC peering vs AWS PrivateLink trade-offs clearly with cost and CIDR overlap perspectives.</span>
+</div>
+</div>
+<!-- Add Note Input -->
+<div class="flex items-center gap-space-xs pt-space-xs">
+<input class="flex-1 h-9 px-3 bg-surface-canvas rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-pure shadow-inner" placeholder="Add live timestamped assessor observation..." type="text"/>
+<button class="px-space-md py-1.5 rounded-lg bg-surface-container-high text-primary font-label-md text-label-md font-semibold hover:bg-surface-variant transition-colors">
+            Record
+          </button>
+</div>
+</div>
+</div>
+<!-- ========================================== -->
+<!-- COLUMN 3: CORPORATE RUBRIC & SCORING (4 Cols) -->
+<!-- ========================================== -->
+<div class="lg:col-span-4 flex flex-col gap-space-md">
+<!-- SCORECARD SUMMARY CARD -->
+<div class="bg-primary text-on-primary p-space-md rounded-xl shadow-md flex flex-col gap-space-sm relative overflow-hidden">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-surface-variant font-semibold">Standard AWS Bar Rubric</span>
+<span class="px-2.5 py-0.5 rounded-full text-label-sm font-label-md bg-status-success text-on-error font-bold">
+            STRONG HIRE
+          </span>
+</div>
+<div class="flex items-baseline gap-space-xs">
+<span class="font-headline-xl text-headline-xl font-bold tracking-tight text-surface-pure">4.74</span>
+<span class="text-surface-variant font-headline-md text-headline-md font-medium">/ 5.00</span>
+<span class="ml-auto text-label-sm font-label-md text-surface-variant">Top 2% percentile</span>
+</div>
+<!-- Mini Progress Bar Indicator -->
+<div class="w-full bg-primary-container h-2 rounded-full overflow-hidden">
+<div class="bg-status-success h-full rounded-full" style="width: 94.8%;"></div>
+</div>
+</div>
+<!-- DETAILED 5-POINT DIMENSION METRICS -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<span class="font-headline-md text-headline-md font-bold text-text-display">Evaluation Dimensions</span>
+<span class="font-label-sm text-label-sm text-text-muted">Scale 1.0 — 5.0</span>
+</div>
+<!-- Metric 1: Distributed Systems -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="font-medium text-text-display">1. Distributed Systems &amp; DSA</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">4.8 / 5.0</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="w-full accent-primary h-1.5 bg-surface-canvas rounded-lg cursor-pointer" max="5" min="1" step="0.1" type="range" value="4.8"/>
+<span class="font-label-sm text-label-sm font-semibold text-status-success whitespace-nowrap">Exceeds Bar</span>
+</div>
+</div>
+<!-- Metric 2: Cloud Architecture -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="font-medium text-text-display">2. Cloud Architecture (AWS/Terraform)</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">4.9 / 5.0</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="w-full accent-primary h-1.5 bg-surface-canvas rounded-lg cursor-pointer" max="5" min="1" step="0.1" type="range" value="4.9"/>
+<span class="font-label-sm text-label-sm font-semibold text-status-success whitespace-nowrap">Distinguished</span>
+</div>
+</div>
+<!-- Metric 3: Problem Solving & Opt -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="font-medium text-text-display">3. Problem Solving &amp; Optimization</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">4.5 / 5.0</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="w-full accent-primary h-1.5 bg-surface-canvas rounded-lg cursor-pointer" max="5" min="1" step="0.1" type="range" value="4.5"/>
+<span class="font-label-sm text-label-sm font-semibold text-primary whitespace-nowrap">Strong Hire</span>
+</div>
+</div>
+<!-- Metric 4: Production Resilience -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="font-medium text-text-display">4. Production Resilience &amp; DevSecOps</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">4.7 / 5.0</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="w-full accent-primary h-1.5 bg-surface-canvas rounded-lg cursor-pointer" max="5" min="1" step="0.1" type="range" value="4.7"/>
+<span class="font-label-sm text-label-sm font-semibold text-status-success whitespace-nowrap">Exceeds Bar</span>
+</div>
+</div>
+<!-- Metric 5: Amazon LP (Customer Obsession/Ownership) -->
+<div class="flex flex-col gap-1">
+<div class="flex items-center justify-between text-body-sm text-body-sm">
+<span class="font-medium text-text-display">5. Behavioral &amp; Leadership Principles</span>
+<span class="font-tabular-data text-tabular-data font-bold text-primary">4.8 / 5.0</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<input class="w-full accent-primary h-1.5 bg-surface-canvas rounded-lg cursor-pointer" max="5" min="1" step="0.1" type="range" value="4.8"/>
+<span class="font-label-sm text-label-sm font-semibold text-status-success whitespace-nowrap">Exceeds Bar</span>
+</div>
+</div>
+</div>
+<!-- HIRING RECOMMENDATION MATRIX -->
+<div class="bg-surface-pure p-space-md rounded-xl shadow-sm flex flex-col gap-space-md">
+<span class="font-headline-md text-headline-md font-bold text-text-display">Corporate Decision Matrix</span>
+<div class="grid grid-cols-2 gap-space-xs">
+<!-- Strong Hire (Active) -->
+<label class="flex items-center gap-2 p-space-sm rounded-lg bg-surface-container-low cursor-pointer transition-colors">
+<input checked="" class="accent-primary" name="recommendation_cadre" type="radio"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-display">Strong Hire</span>
+<span class="font-label-sm text-label-sm text-text-muted">Direct Offer LOI</span>
+</div>
+</label>
+<!-- Hire / Next Round -->
+<label class="flex items-center gap-2 p-space-sm rounded-lg bg-surface-canvas hover:bg-surface-subtle cursor-pointer transition-colors">
+<input class="accent-primary" name="recommendation_cadre" type="radio"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-display">Hire (Bar-Raiser)</span>
+<span class="font-label-sm text-label-sm text-text-muted">Debrief Needed</span>
+</div>
+</label>
+<!-- Hold -->
+<label class="flex items-center gap-2 p-space-sm rounded-lg bg-surface-canvas hover:bg-surface-subtle cursor-pointer transition-colors">
+<input class="accent-primary" name="recommendation_cadre" type="radio"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-display">Hold / Pool</span>
+<span class="font-label-sm text-label-sm text-text-muted">Waitlist Tier-2</span>
+</div>
+</label>
+<!-- Reject -->
+<label class="flex items-center gap-2 p-space-sm rounded-lg bg-surface-canvas hover:bg-surface-subtle cursor-pointer transition-colors">
+<input class="accent-primary" name="recommendation_cadre" type="radio"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-bold text-text-display">Not Fit</span>
+<span class="font-label-sm text-label-sm text-text-muted">Archive File</span>
+</div>
+</label>
+</div>
+<!-- Offer Package & Joining Specifications -->
+<div class="p-space-sm bg-surface-canvas rounded-lg flex flex-col gap-space-xs text-body-sm text-body-sm">
+<div class="flex items-center justify-between">
+<span class="text-text-muted">Target Cadre:</span>
+<span class="font-semibold text-text-display">Cloud DevSecOps Engineer</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-text-muted">Institutional Track:</span>
+<span class="font-semibold text-primary">Super Dream (₹18.5 LPA)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-text-muted">Joining Schedule:</span>
+<span class="font-semibold text-text-display">July 2025 (Immediate)</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-text-muted">Base Location:</span>
+<span class="font-semibold text-text-display">Bengaluru Cloud Campus</span>
+</div>
+</div>
+<!-- Confidential Recruiter Remarks -->
+<div class="flex flex-col gap-1">
+<label class="font-label-md text-label-md text-text-body font-semibold">Assessor Confidential Debrief Notes</label>
+<textarea class="w-full p-2.5 bg-surface-canvas rounded-lg font-body-sm text-body-sm text-on-surface focus:outline-none focus:bg-surface-pure shadow-inner" placeholder="Candidate exhibits exceptional deep-dive into distributed messaging queues. Solid match for AWS Core Architecture team..." rows="3"></textarea>
+</div>
+<!-- Dual Endorsement & Signature Verification -->
+<div class="p-space-sm bg-surface-subtle rounded-lg flex flex-col gap-space-xs">
+<div class="flex items-center justify-between text-label-sm text-label-sm">
+<span class="text-text-muted">AWS Lead Assessor:</span>
+<span class="text-status-success font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">verified</span> Marcus Vance (Key-Verified)
+            </span>
+</div>
+<div class="flex items-center justify-between text-label-sm text-label-sm">
+<span class="text-text-muted">JBIT TPC Observer:</span>
+<span class="text-status-success font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">verified</span> Er. Vikas Tyagi (Signed)
+            </span>
+</div>
+</div>
+<!-- Primary Action Triggers -->
+<div class="flex flex-col gap-space-xs pt-space-xs">
+<button class="w-full h-10 bg-primary-container hover:bg-primary text-on-primary rounded-lg font-label-md text-label-md font-semibold transition-all flex items-center justify-center gap-space-xs shadow-sm" type="button">
+<span class="material-symbols-outlined text-[18px]">workspace_premium</span>
+<span>Submit Scorecard &amp; Push LOI Recommendation</span>
+</button>
+<div class="flex items-center gap-space-xs">
+<button class="flex-1 h-9 bg-surface-pure hover:bg-surface-subtle text-text-display rounded-lg font-label-md text-label-md font-semibold shadow-sm transition-colors" type="button">
+              Save Draft &amp; Next Candidate
+            </button>
+<button class="px-3 h-9 bg-surface-canvas hover:bg-surface-subtle text-text-muted rounded-lg font-label-md text-label-md transition-colors" title="Flag for debrief" type="button">
+<span class="material-symbols-outlined text-[18px]">flag</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div></main></div></body></html>

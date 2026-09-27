@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{width:100vw;margin:0;padding:0;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "secondary-fixed-dim": "#ffb4ab", "outline-variant": "#c2c7cf", "border-subtle": "#E2E8F0", "on-surface-variant": "#42474e", "surface-pure": "#FFFFFF", "outline": "#73777f", "on-primary-container": "#7fa6d0", "surface-container-lowest": "#ffffff", "on-primary": "#ffffff", "surface-subtle": "#F1F5F9", "on-primary-fixed-variant": "#1f496f", "status-success": "#10B981", "tertiary": "#00263d", "surface-container-low": "#eff4ff", "surface-variant": "#d3e4fe", "on-tertiary-fixed": "#001d31", "inverse-primary": "#a3caf6", "surface-container-highest": "#d3e4fe", "primary-fixed-dim": "#a3caf6", "primary-container": "#0b3b60", "tertiary-container": "#003c5e", "surface-dim": "#cbdbf5", "on-tertiary": "#ffffff", "border-strong": "#CBD5E1", "status-error": "#EF4444", "on-surface": "#0b1c30", "text-muted": "#64748B", "on-tertiary-fixed-variant": "#004b73", "primary": "#002541", "secondary": "#bb0112", "surface-tint": "#3a6188", "error-container": "#ffdad6", "status-warning": "#F59E0B", "on-secondary-fixed-variant": "#93000b", "surface-bright": "#f8f9ff", "inverse-on-surface": "#eaf1ff", "tertiary-fixed": "#cce5ff", "on-tertiary-container": "#49a9ef", "on-error": "#ffffff", "error": "#ba1a1a", "status-info": "#0284C7", "on-secondary-container": "#fffbff", "surface-container": "#e5eeff", "on-secondary": "#ffffff", "on-background": "#0b1c30", "on-error-container": "#93000a", "secondary-fixed": "#ffdad6", "on-secondary-fixed": "#410002", "surface-canvas": "#F8FAFC", "background": "#f8f9ff", "tertiary-fixed-dim": "#93ccff", "text-display": "#0F172A", "text-body": "#334155", "surface": "#f8f9ff", "secondary-container": "#e02928", "primary-fixed": "#d0e4ff", "surface-container-high": "#dce9ff", "inverse-surface": "#213145", "on-primary-fixed": "#001d35" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "margin-mobile": "1rem", "gutter-lg": "2rem", "gutter-sm": "1rem", "space-sm": "0.5rem", "space-lg": "1.5rem", "space-md": "1rem", "gutter": "1.5rem", "space-xs": "0.25rem", "margin": "2rem", "margin-desktop": "2.5rem", "space-xl": "2rem" }, fontFamily: { "title-sm": ["Inter"], "headline-xl": ["Plus Jakarta Sans"], "headline-xl-mobile": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "label-sm": ["Inter"], "headline-lg": ["Plus Jakarta Sans"], "label-md": ["Inter"], "body-md": ["Inter"], "tabular-data": ["Inter"], "body-lg": ["Inter"], "body-sm": ["Inter"], "headline-lg-mobile": ["Plus Jakarta Sans"] }, fontSize: { "title-sm": ["15px", { lineHeight: "22px", letterSpacing: "-0.01em", fontWeight: "600" }], "headline-xl": ["36px", { lineHeight: "44px", letterSpacing: "-0.025em", fontWeight: "700" }], "headline-xl-mobile": ["28px", { lineHeight: "36px", letterSpacing: "-0.02em", fontWeight: "700" }], "headline-md": ["18px", { lineHeight: "26px", letterSpacing: "-0.01em", fontWeight: "600" }], "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.04em", fontWeight: "600" }], "headline-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.02em", fontWeight: "600" }], "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.02em", fontWeight: "600" }], "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }], "tabular-data": ["13px", { lineHeight: "18px", fontWeight: "500" }], "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }], "body-sm": ["13px", { lineHeight: "18px", fontWeight: "400" }], "headline-lg-mobile": ["20px", { lineHeight: "28px", letterSpacing: "-0.015em", fontWeight: "600" }] } } } };</script><style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head><body class="bg-surface font-body-md text-body-md text-text-body flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe"><div class="h-16 px-margin-mobile flex items-center justify-between"><div class="flex items-center gap-space-sm"><img alt="Official JB Institute of Technology (JBIT) institutional logo badge. Clean geometric emblem with a stylized graduation torch and book crest, deep royal blue and crimson red accents with clean crisp typography 'JBIT DEHRADUN'.. Brand logo. - Primary color: #0b3b60
+- Font: plusJakartaSans
+- Mode: light
+- Roundness: rounded-md
+" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UcfHOeid_-p8Oixg10r7WTA2AIkDuzrvU6gUModSdyRlO1OFhVsW1dvsxDtGGCrnnOi4b3UJcEvkS9duZP2hWE_AnfD1WUnQgWhrY8Lrewq9GUe4QnPF-ha6STUGOJSMFQe2P2S1cIQ5gwK-Gpk5HEXNU_AW-XHAmb6Hccr30LhoXVfXJCr7bqOCRD546VNawnlwniiEs9y2aSGIzkyaW4gFTvqpN4YP8uMb3LY2JGZVY8YkWfAXSpD6w"/><div class="flex flex-col"><div class="flex items-center gap-space-xs"><span class="font-headline-md text-title-sm text-primary tracking-tight">JBIT TPC</span><span class="text-label-sm font-label-sm uppercase bg-surface-variant text-primary px-1.5 py-0.5 rounded-full">2025</span></div><span class="font-label-sm text-label-sm text-text-muted">Training &amp; Placement Cell</span></div></div><div class="flex items-center gap-space-sm"><a aria-label="Notifications" class="relative w-11 h-11 flex items-center justify-center rounded-lg text-on-surface-variant hover:text-primary transition-colors" data-path="campus-notifications" href="#"><span class="material-symbols-outlined text-[22px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 rounded-full bg-secondary ring-2 ring-surface"></span></a><a aria-label="Student Profile Rohan Verma" class="flex items-center p-0.5 rounded-full ring-1 ring-border-strong hover:ring-primary transition-all" data-path="career-profile" href="#"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1UFt7sbDrG2PP5OdI1w_YLsmwruU3YIpNFyCVmZhs9oYVQUbg_PLnqLLq1Z0QK1exzCn_pTf7skXo6ZfbJTkpvmAr-E_yrd3GwdMJvPDlRpO_aJE1yWWm8OibzYajs1WsoyKxRTghKh9GBJh7Za2KXSU9hlc9c-hwzrdOrbXqdLxm90IIRXQehKbaF2qahc3_MWa6PQIFmZXOkfin4TT3Md1wWdbtSuucuvjlcuXhwIOS-TXV1NApeIyQ"/></a></div></div></header><main class="flex flex-col relative w-full pt-16 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full">
+<!-- Content Container with mobile margin padding -->
+<div class="px-margin-mobile flex flex-col gap-space-lg pb-space-xl">
+<!-- Top Headline & Student Context Header -->
+<div class="flex flex-col gap-space-xs mt-space-sm">
+<div class="flex items-center justify-between">
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-high text-primary font-label-md text-label-md">
+<span class="w-2 h-2 rounded-full bg-status-success"></span>
+<span>AY 2024–25 • Final Year Cohort</span>
+</div>
+<div class="inline-flex items-center gap-1 text-primary font-tabular-data text-tabular-data bg-surface-pure px-2.5 py-1 rounded-full shadow-sm">
+<span class="material-symbols-outlined text-[16px] text-status-success">verified</span>
+<span class="font-label-sm text-label-sm">TPC Cleared</span>
+</div>
+</div>
+<div class="flex flex-col">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-text-display tracking-tight">
+          Offers &amp; LOI Ledger
+        </h1>
+<p class="font-body-sm text-body-sm text-text-muted">
+          Rohan Verma • Roll: 2201040189 • B.Tech CSE (Sem 8)
+        </p>
+</div>
+</div>
+<!-- Summary Metrics Dashboard (Bento Grid 2x2) -->
+<div class="grid grid-cols-2 gap-space-sm">
+<!-- Metric 1 -->
+<div class="bg-surface-pure rounded-xl p-space-md shadow-sm flex flex-col gap-1">
+<div class="flex items-center justify-between text-text-muted">
+<span class="font-label-sm text-label-sm uppercase tracking-wider">Total Received</span>
+<span class="material-symbols-outlined text-[18px] text-primary">military_tech</span>
+</div>
+<div class="font-headline-lg-mobile text-headline-lg-mobile text-text-display">2 Offers</div>
+<span class="font-label-sm text-label-sm text-status-success flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-status-success"></span>
+          1 Dream • 1 Super Dream
+        </span>
+</div>
+<!-- Metric 2 -->
+<div class="bg-surface-pure rounded-xl p-space-md shadow-sm flex flex-col gap-1">
+<div class="flex items-center justify-between text-text-muted">
+<span class="font-label-sm text-label-sm uppercase tracking-wider">Highest CTC</span>
+<span class="material-symbols-outlined text-[18px] text-secondary">trending_up</span>
+</div>
+<div class="font-headline-lg-mobile text-headline-lg-mobile text-primary">₹18.50 <span class="font-label-md text-label-md font-normal text-text-muted">LPA</span></div>
+<span class="font-label-sm text-label-sm text-text-muted">Amazon Web Services</span>
+</div>
+<!-- Metric 3 -->
+<div class="bg-surface-pure rounded-xl p-space-md shadow-sm flex flex-col gap-1">
+<div class="flex items-center justify-between text-text-muted">
+<span class="font-label-sm text-label-sm uppercase tracking-wider">Avg Base Pay</span>
+<span class="material-symbols-outlined text-[18px] text-primary">payments</span>
+</div>
+<div class="font-headline-md text-headline-md text-text-display">₹10.85 <span class="font-label-sm text-label-sm font-normal text-text-muted">LPA</span></div>
+<span class="font-label-sm text-label-sm text-text-muted">Guaranteed Fixed Comp</span>
+</div>
+<!-- Metric 4 -->
+<div class="bg-surface-pure rounded-xl p-space-md shadow-sm flex flex-col gap-1">
+<div class="flex items-center justify-between text-text-muted">
+<span class="font-label-sm text-label-sm uppercase tracking-wider">Policy Status</span>
+<span class="material-symbols-outlined text-[18px] text-status-info">gavel</span>
+</div>
+<div class="font-headline-md text-headline-md text-text-display">1 Locked</div>
+<span class="font-label-sm text-label-sm text-status-warning font-semibold">1 Provisional Pending</span>
+</div>
+</div>
+<!-- Institutional Policy Rule 4.2 Banner -->
+<div class="bg-surface-container-low rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm relative overflow-hidden">
+<div class="flex items-start gap-space-sm">
+<div class="w-8 h-8 rounded-lg bg-primary-container text-on-primary flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[20px]">policy</span>
+</div>
+<div class="flex flex-col gap-1 flex-1">
+<div class="flex items-center justify-between">
+<span class="font-title-sm text-title-sm text-primary">UTU &amp; JBIT Placement Rule 4.2</span>
+<span class="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-status-info/10 text-status-info font-bold">Active Cap</span>
+</div>
+<p class="font-body-sm text-body-sm text-text-body leading-relaxed">
+            Policy permits maximum <strong class="text-text-display">1 Super Dream (&gt;₹10 LPA)</strong> and <strong class="text-text-display">2 Dream (₹6–10 LPA)</strong> placements. Accepting AWS will lock your portfolio and automatically withdraw pending baseline drives.
+          </p>
+</div>
+</div>
+<!-- Progress / Utilization Bar -->
+<div class="bg-surface-pure rounded-lg p-2.5 flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-label-sm font-label-sm">
+<span class="text-text-muted">Institutional Offer Quota</span>
+<span class="text-primary font-bold">1 / 2 Slots Utilized</span>
+</div>
+<div class="w-full h-2 rounded-full bg-surface-subtle overflow-hidden flex">
+<div class="h-full bg-primary" style="width: 50%;"></div>
+<div class="h-full bg-status-warning" style="width: 30%;"></div>
+<div class="h-full bg-surface-subtle" style="width: 20%;"></div>
+</div>
+<div class="flex items-center justify-between text-label-sm font-label-sm text-text-muted mt-0.5">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary"></span>TCS (Locked)</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-status-warning"></span>AWS (In Review)</span>
+<span class="flex items-center gap-1 text-status-success font-medium">1 Open Window</span>
+</div>
+</div>
+</div>
+<!-- Active Offer Card #1: TCS Digital (Endorsed & Accepted) -->
+<div class="bg-surface-pure rounded-xl shadow-md p-space-md flex flex-col gap-space-md">
+<!-- Card Top: Company Branding & Verification -->
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex items-center gap-space-sm">
+<div class="w-12 h-12 rounded-xl bg-surface-subtle flex items-center justify-center p-1.5 shadow-sm shrink-0">
+<img class="w-full h-full object-contain rounded-lg" data-alt="Official brand logo of Tata Consultancy Services TCS on clean white backdrop with corporate typography and blue accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBz0LDJvhxbedq9lZlTyFOPMQZEfzGK5a92VA0gE6ot9GD-L3fpJ5dQz_iD-i-QzLjWDY0C1CQxLPJ3hLjXqHwhvveKXyPdqdq5lfGkWJ9qFOSI9PiYPB7FNxd1xG7uJLbWwwTXRYxPpELFy9O4oo6DFRYH_ZFv0wnJZjJhNhz2Ay6S-D1-30UTKxLAtb8EvPym7M_mSTHXEZ-Xs0FLXhw3PjNoWysZuw4pEnQfPOZHR3CUl5SvUxf0"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-md text-headline-md text-text-display leading-snug">Tata Consultancy Services</span>
+<span class="font-body-sm text-body-sm text-text-muted">Systems Engineer • Digital Cadre</span>
+</div>
+</div>
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-success/10 text-status-success font-label-sm text-label-sm shrink-0 font-bold">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+          Accepted
+        </span>
+</div>
+<!-- CTC Spotlight Pill -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted">Total Gross Package</span>
+<div class="font-headline-xl-mobile text-headline-xl-mobile text-primary font-bold">₹9.00 <span class="font-title-sm text-title-sm text-text-body font-normal">LPA CTC</span></div>
+</div>
+<div class="flex flex-col items-end text-right">
+<span class="px-2 py-0.5 rounded-full bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold">Tier-1 Dream</span>
+<span class="font-label-sm text-label-sm text-text-muted mt-1">Ref: TCS/JBIT/DIG-88412</span>
+</div>
+</div>
+<!-- Compensation Ledger Breakdown -->
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-md text-label-md text-text-display font-semibold">Compensation Architecture</span>
+<div class="bg-surface-canvas rounded-lg p-space-sm flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Base Salary (Annual Fixed)</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹7,20,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Performance Linked Incentive</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹1,00,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">One-time Joining Bonus</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹80,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Retirals, Gratuity &amp; Medical</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹0.00 LPA</span>
+</div>
+</div>
+</div>
+<!-- Placement Terms Grid -->
+<div class="grid grid-cols-2 gap-space-sm text-body-sm font-body-sm bg-surface-pure">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Tentative Onboarding</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-medium">July – August 2025</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Primary Work Hub</span>
+<span class="text-text-display font-medium">Pune / Bengaluru</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">Service Bond</span>
+<span class="text-status-success font-medium">Nil (0 Years Bond)</span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-text-muted">TPC Clearance Ref</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-medium">JBIT-TCS-091</span>
+</div>
+</div>
+<!-- Action Suite -->
+<div class="flex flex-col gap-space-xs pt-1">
+<div class="grid grid-cols-2 gap-space-xs">
+<button class="h-10 px-3 rounded-lg bg-primary-container text-on-primary font-label-md text-label-md flex items-center justify-center gap-1.5 shadow-sm active:bg-primary transition-all" type="button">
+<span class="material-symbols-outlined text-[18px]">download_for_offline</span>
+<span>LOI Document (PDF)</span>
+</button>
+<button class="h-10 px-3 rounded-lg bg-surface-container-high text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-variant transition-all" type="button">
+<span class="material-symbols-outlined text-[18px] text-status-success">cloud_done</span>
+<span>DigiLocker Synced</span>
+</button>
+</div>
+<button class="h-9 px-3 rounded-lg bg-surface-subtle text-text-body font-label-sm text-label-sm flex items-center justify-center gap-1.5 hover:bg-surface-container transition-all" type="button">
+<span class="material-symbols-outlined text-[16px] text-primary">workspace_premium</span>
+<span>View Institutional Endorsement Certificate</span>
+</button>
+</div>
+</div>
+<!-- Active Provisional Offer Card #2: Amazon Web Services (Action Pending) -->
+<div class="bg-surface-pure rounded-xl shadow-md p-space-md flex flex-col gap-space-md relative overflow-hidden">
+<!-- Glow ribbon on top for urgent super dream action -->
+<div class="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-secondary via-status-warning to-primary"></div>
+<!-- Card Header -->
+<div class="flex items-start justify-between gap-space-sm pt-1">
+<div class="flex items-center gap-space-sm">
+<div class="w-12 h-12 rounded-xl bg-surface-subtle flex items-center justify-center p-1.5 shadow-sm shrink-0">
+<img class="w-full h-full object-contain rounded-lg" data-alt="Modern high contrast Amazon Web Services cloud computing emblem on clean studio background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0tgNo2js33Wkw1EvvBu511IrKChk6wUQhs9O_x5-GycYeLFMynmBV52gglVUT396rfijgRzCxJHfQdZHmrx3teHbd91t5jLNQrC5L3spVXa2PuHSYh1f0QyVG7GQCBiPLy7RgHLDQWWLxKJF0486JWh6uEPnF3GAS7WSpteerV8ydAsy-iIz2uuIoW5g3MAZD_fL6HvTp1tm5Aj--Dt8LB-RgVXYd6Q0zBWTDxXlvHFRcbinUexCe"/>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-md text-headline-md text-text-display leading-snug">Amazon Web Services</span>
+<span class="font-body-sm text-body-sm text-text-muted">Cloud Support &amp; DevSecOps Assoc.</span>
+</div>
+</div>
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-status-warning/15 text-status-warning font-label-sm text-label-sm shrink-0 font-bold animate-pulse">
+<span class="material-symbols-outlined text-[14px]">hourglass_top</span>
+          Action Pending
+        </span>
+</div>
+<!-- Compensation Banner -->
+<div class="bg-gradient-to-br from-surface-container-high to-surface-variant rounded-xl p-space-md flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-body font-semibold">Super Dream CTC</span>
+<div class="font-headline-xl-mobile text-headline-xl-mobile text-primary font-bold">₹18.50 <span class="font-title-sm text-title-sm text-primary font-normal">LPA</span></div>
+</div>
+<div class="flex flex-col items-end text-right">
+<span class="px-2.5 py-1 rounded-full bg-secondary text-on-secondary font-label-sm text-label-sm font-bold tracking-wide">SUPER DREAM</span>
+<span class="font-label-sm text-label-sm text-status-error font-semibold mt-1 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">alarm</span>
+            Expires in 46h 18m
+          </span>
+</div>
+</div>
+<!-- Detailed Breakdown Table -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-text-display font-semibold">Institutional CTC Architecture</span>
+<span class="font-label-sm text-label-sm text-text-muted">Verified by AWS HR</span>
+</div>
+<div class="bg-surface-canvas rounded-lg p-space-sm flex flex-col gap-1.5">
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Guaranteed Fixed Base</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹14,50,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Sign-on Bonus (Year 1)</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹2,00,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">RSU Equity Grant (USD converted)</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹2,00,000</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="text-text-muted">Relocation &amp; Tech Setup Allowance</span>
+<span class="font-tabular-data text-tabular-data text-text-display font-semibold">₹1,50,000 (Gross)</span>
+</div>
+</div>
+</div>
+<!-- Pre-placement Eligibility Checklist -->
+<div class="bg-surface-container-low rounded-xl p-space-sm flex flex-col gap-2">
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-text-muted font-bold">Mandatory Clearance Checklist</span>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="material-symbols-outlined text-[18px] text-status-success">check_circle</span>
+            Degree Completion with 0 Backlogs
+          </span>
+<span class="font-label-sm text-label-sm text-status-success font-semibold">Verified</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="material-symbols-outlined text-[18px] text-status-success">check_circle</span>
+            Min Aggregate 75% (Current: 84.4%)
+          </span>
+<span class="font-label-sm text-label-sm text-status-success font-semibold">Eligible (8.92 CGPA)</span>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm">
+<span class="flex items-center gap-1.5 text-text-body">
+<span class="material-symbols-outlined text-[18px] text-status-warning">pending</span>
+            Registrar Academic Ledger Release
+          </span>
+<span class="font-label-sm text-label-sm text-status-warning font-semibold">Awaiting Lock</span>
+</div>
+</div>
+<!-- Interactive Decision Actions -->
+<div class="flex flex-col gap-space-xs pt-1">
+<button class="w-full h-11 px-4 rounded-xl bg-primary-container text-on-primary font-headline-md text-headline-md flex items-center justify-center gap-2 shadow-md active:bg-primary transition-all" id="lockOfferBtn" type="button">
+<span class="material-symbols-outlined text-[20px]">lock</span>
+<span>Accept &amp; Lock Super Dream</span>
+</button>
+<div class="grid grid-cols-2 gap-space-xs">
+<button class="h-9 px-3 rounded-lg bg-surface-subtle text-text-body font-label-md text-label-md flex items-center justify-center gap-1 active:bg-surface-container transition-all" type="button">
+<span class="material-symbols-outlined text-[16px]">visibility</span>
+<span>Read 14-page Terms</span>
+</button>
+<button class="h-9 px-3 rounded-lg bg-surface-subtle text-secondary font-label-md text-label-md flex items-center justify-center gap-1 active:bg-secondary-fixed transition-all" type="button">
+<span class="material-symbols-outlined text-[16px]">help_center</span>
+<span>Request Clarification</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Cryptographic Verification & Institutional Notary Ledger -->
+<div class="bg-surface-pure rounded-xl shadow-sm p-space-md flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<div class="w-8 h-8 rounded-lg bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">shield_person</span>
+</div>
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-text-display">Institutional Notary &amp; UTU Ledger</span>
+<span class="font-label-sm text-label-sm text-text-muted">Verified Cryptographic Timestamp</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-status-success text-[24px]">verified_user</span>
+</div>
+<!-- Ledger Hashes & Signatures -->
+<div class="bg-surface-subtle rounded-lg p-space-sm flex flex-col gap-2 font-tabular-data text-tabular-data">
+<div class="flex flex-col gap-0.5">
+<span class="text-label-sm font-label-sm text-text-muted uppercase">UTU State Placement Ledger Hash</span>
+<span class="text-primary break-all font-mono text-[11px] bg-surface-pure px-2 py-1 rounded">0x7f8d991b3e81ac04b509da124fc8b99c41991823abce881</span>
+</div>
+<div class="grid grid-cols-2 gap-space-sm pt-1 text-body-sm font-body-sm">
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-text-muted">TPO Head Endorsement</span>
+<span class="text-text-display font-semibold">Dr. Arvind Negi</span>
+<span class="text-label-sm font-label-sm text-status-success">Digitally Signed • May 05</span>
+</div>
+<div class="flex flex-col">
+<span class="text-label-sm font-label-sm text-text-muted">Dean Academics</span>
+<span class="text-text-display font-semibold">Dr. Rajesh Bhatt</span>
+<span class="text-label-sm font-label-sm text-status-success">Affiliated • JBIT TPC</span>
+</div>
+</div>
+</div>
+<!-- National Placement Registry Sync Card -->
+<div class="flex items-center gap-space-sm bg-surface-container-low p-2.5 rounded-lg">
+<div class="w-10 h-10 rounded bg-surface-pure flex items-center justify-center p-1 shrink-0 shadow-sm">
+<span class="material-symbols-outlined text-[26px] text-primary">qr_code_2</span>
+</div>
+<div class="flex flex-col flex-1">
+<span class="font-label-md text-label-md text-text-display">National Student Placement Registry (NAD)</span>
+<span class="font-label-sm text-label-sm text-text-muted">Permanent ID: JBIT-2025-CSE-0189</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-surface-pure text-primary flex items-center justify-center shadow-sm shrink-0" type="button">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+</button>
+</div>
+</div>
+<!-- TPC Help & Deferral Support Desk -->
+<div class="bg-surface-pure rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-title-sm text-title-sm text-text-display">Need Counseling or Date Deferral?</span>
+<span class="font-body-sm text-body-sm text-text-muted">JBIT Placement Cell officers are available 09:30 - 17:00</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-space-sm">
+<button class="h-10 rounded-lg bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high transition-all" type="button">
+<span class="material-symbols-outlined text-[18px]">call</span>
+<span>Contact TPO Officer</span>
+</button>
+<button class="h-10 rounded-lg bg-surface-container text-primary font-label-md text-label-md flex items-center justify-center gap-1.5 active:bg-surface-container-high transition-all" type="button">
+<span class="material-symbols-outlined text-[18px]">support_agent</span>
+<span>Raise Ticket</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Simple micro-interaction for locking Super Dream Offer
+  document.getElementById('lockOfferBtn')?.addEventListener('click', function() {
+    const isConfirmed = confirm('Are you sure you want to accept and lock the Amazon Web Services Super Dream Offer (₹18.50 LPA)?\n\nPer JBIT TPC Rule 4.2, this will lock your placement window and finalize your cohort status.');
+    if (isConfirmed) {
+      this.classList.remove('bg-primary-container', 'active:bg-primary');
+      this.classList.add('bg-status-success', 'text-surface-pure');
+      this.innerHTML = '<span class="material-symbols-outlined text-[20px]">check_circle</span><span>Super Dream Locked & Registered</span>';
+      this.disabled = true;
+      alert('Offer locked successfully! The TPC Cell has notified Amazon HR and initiated the DigiLocker issuance protocol.');
+    }
+  });
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface-pure/95 backdrop-blur-xl shadow-[0_-2px_12px_rgba(0,0,0,0.05)]" data-active-classes="text-primary font-bold"><div class="flex justify-around items-center h-16 px-1"><a class="flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[44px] text-text-muted transition-colors" data-path="placement-drives" href="#"><span class="material-symbols-outlined text-[20px]">work</span><span class="font-label-sm text-label-sm tracking-tight">Drives</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[44px] text-text-muted transition-colors" data-path="applied-drives" href="#"><span class="material-symbols-outlined text-[20px]">checklist</span><span class="font-label-sm text-label-sm tracking-tight">Applied</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[44px] text-text-muted transition-colors" data-path="interviews-slotting" href="#"><span class="material-symbols-outlined text-[20px]">event_available</span><span class="font-label-sm text-label-sm tracking-tight">Interviews</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[44px] text-text-muted transition-colors" data-path="offers-loi-ledger" href="#"><span class="material-symbols-outlined text-[20px]">military_tech</span><span class="font-label-sm text-label-sm tracking-tight">Offers</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[44px] text-text-muted transition-colors" data-path="career-profile" href="#"><span class="material-symbols-outlined text-[20px]">badge</span><span class="font-label-sm text-label-sm tracking-tight">Profile</span></a></div></nav></body></html>

@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #002541;
+  --color-primary-container: #0b3b60;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #7fa6d0;
+  --color-primary-fixed: #d0e4ff;
+  --color-primary-fixed-dim: #a3caf6;
+
+  --color-secondary: #bb0112;
+  --color-secondary-container: #e02928;
+  --color-secondary-accent: #dc2626;
+  --color-on-secondary: #ffffff;
+  --color-secondary-fixed: #ffdad6;
+  --color-secondary-fixed-dim: #ffb4ab;
+
+  --color-tertiary: #00263d;
+  --color-tertiary-container: #003c5e;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #49a9ef;
+  --color-tertiary-fixed: #cce5ff;
+  --color-tertiary-fixed-dim: #93ccff;
+
+  --color-surface: #f8f9ff;
+  --color-surface-dim: #cbdbf5;
+  --color-surface-bright: #f8f9ff;
+  --color-surface-canvas: #F8FAFC;
+  --color-surface-subtle: #F1F5F9;
+  --color-surface-pure: #FFFFFF;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+
+  --color-border-subtle: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+
+  --color-text-display: #0F172A;
+  --color-text-body: #334155;
+  --color-text-muted: #64748B;
+
+  --color-status-success: #10B981;
+  --color-status-warning: #F59E0B;
+  --color-status-error: #EF4444;
+  --color-status-info: #0284C7;
+
+  --font-headline: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-tabular: 'Inter', system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border-subtle);
+  }
+
+  html, body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #F8FAFC;
+    color: #334155;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "cv11" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .font-tabular-nums {
+    font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1;
+  }
+}
+
+/* Material Symbols icon helper */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
