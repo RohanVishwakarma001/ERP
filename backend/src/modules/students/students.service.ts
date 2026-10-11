@@ -1,293 +1,162 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { AttendanceStatus, FeeStatus, PetitionStatus, Prisma } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import {
+  ATTENDANCE_THRESHOLD,
+  classesNeededToReachThreshold,
+  countsAsAttended,
+} from '../../common/utils/attendance-policy';
+import { DebarmentDecision, ListStudentsQueryDto } from './dto/students.dto';
 
-const MOCK_STUDENTS = [
-  {
-    id: 'stu-01',
-    rollNumber: '220102048',
-    enrollmentNumber: 'UTU2022CS048',
-    name: 'Aarav Sharma',
-    email: 'aarav.sharma@jbitdoon.edu.in',
-    department: 'Computer Science & Engineering',
-    program: 'B.Tech CSE',
-    semester: 6,
-    section: 'CSE-6A',
-    cgpa: 8.92,
-    overallAttendance: 84.5,
-    isDebarred: false,
-    admissionYear: 2022,
-    status: 'ACTIVE',
-  },
-  {
-    id: 'stu-02',
-    rollNumber: '220102012',
-    enrollmentNumber: 'UTU2022CS012',
-    name: 'Devendra Bisht',
-    email: 'devendra.bisht@jbitdoon.edu.in',
-    department: 'Computer Science & Engineering',
-    program: 'B.Tech CSE',
-    semester: 6,
-    section: 'CSE-6A',
-    cgpa: 7.21,
-    overallAttendance: 68.2,
-    isDebarred: true,
-    admissionYear: 2022,
-    status: 'ACTIVE',
-  },
-  {
-    id: 'stu-03',
-    rollNumber: '220102005',
-    enrollmentNumber: 'UTU2022CS005',
-    name: 'Ananya Joshi',
-    email: 'ananya.joshi@jbitdoon.edu.in',
-    department: 'Computer Science & Engineering',
-    program: 'B.Tech CSE',
-    semester: 6,
-    section: 'CSE-6A',
-    cgpa: 9.45,
-    overallAttendance: 92.1,
-    isDebarred: false,
-    admissionYear: 2022,
-    status: 'ACTIVE',
-  },
-  {
-    id: 'stu-04',
-    rollNumber: '220102018',
-    enrollmentNumber: 'UTU2022CS018',
-    name: 'Kavita Rawat',
-    email: 'kavita.rawat@jbitdoon.edu.in',
-    department: 'Computer Science & Engineering',
-    program: 'B.Tech CSE',
-    semester: 6,
-    section: 'CSE-6A',
-    cgpa: 8.60,
-    overallAttendance: 81.0,
-    isDebarred: false,
-    admissionYear: 2022,
-    status: 'ACTIVE',
-  },
-  {
-    id: 'stu-05',
-    rollNumber: '220102024',
-    enrollmentNumber: 'UTU2022CS024',
-    name: 'Mohit Semwal',
-    email: 'mohit.semwal@jbitdoon.edu.in',
-    department: 'Computer Science & Engineering',
-    program: 'B.Tech CSE',
-    semester: 6,
-    section: 'CSE-6A',
-    cgpa: 7.42,
-    overallAttendance: 74.0,
-    isDebarred: false,
-    admissionYear: 2022,
-    status: 'ACTIVE',
-  },
-];
+const STUDENT_INCLUDE = {
+  user: { select: { name: true, email: true, phone: true, avatarUrl: true } },
+  department: { select: { code: true, name: true } },
+  program: { select: { code: true, name: true } },
+  section: { select: { name: true } },
+} satisfies Prisma.StudentInclude;
+
+type StudentRow = Prisma.StudentGetPayload<{ include: typeof STUDENT_INCLUDE }>;
+
+interface StudentAggregates {
+  attended: number;
+  conducted: number;
+  feesDue: number;
+  pendingPetitions: number;
+}
+
+const EMPTY_AGGREGATES: StudentAggregates = { attended: 0, conducted: 0, feesDue: 0, pendingPetitions: 0 };
 
 @Injectable()
 export class StudentsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(params?: { department?: string; semester?: number; isDebarred?: boolean; search?: string }) {
-    if (this.prisma.isConnected) {
-      try {
-        const where: any = { deletedAt: null };
-        if (params?.semester) where.semester = Number(params.semester);
-        if (params?.isDebarred !== undefined) where.isDebarred = String(params.isDebarred) === 'true';
-
-        const students = await this.prisma.student.findMany({
-          where,
-          include: {
-            user: { select: { name: true, email: true, phone: true, avatarUrl: true } },
-            department: { select: { code: true, name: true } },
-            program: { select: { code: true, name: true } },
-            section: { select: { name: true } },
-          },
-        });
-
-        if (students.length > 0) {
-          return students.map((s) => ({
-            id: s.id,
-            rollNumber: s.rollNumber,
-            enrollmentNumber: s.enrollmentNumber,
-            name: s.user.name,
-            email: s.user.email,
-            phone: s.user.phone || '+91 98765 43210',
-            department: s.department.name,
-            program: s.program.name,
-            semester: s.semester,
-            section: s.section?.name || 'CSE-6A',
-            batch: `${s.admissionYear}-${s.admissionYear + 4}`,
-            cgpa: s.cgpa,
-            attendancePercent: s.overallAttendance,
-            overallAttendance: s.overallAttendance,
-            conductedClasses: 180,
-            attendedClasses: Math.round((s.overallAttendance / 100) * 180),
-            debarmentStatus: s.isDebarred ? 'DEBARRED' : 'ELIGIBLE',
-            hallTicketStatus: s.isDebarred ? 'WITHHELD' : 'RELEASED',
-            medicalLeavesPending: 1,
-            feesDue: s.isDebarred ? 12500 : 0,
-            avatarUrl: s.user.avatarUrl || '/assets/student-avatar.png',
-            address: 'Dehradun, Uttarakhand',
-            isDebarred: s.isDebarred,
-            status: 'ACTIVE',
-          }));
-        }
-      } catch {
-        // Fallback
-      }
+  async findAll(query: ListStudentsQueryDto = {}) {
+    const where: Prisma.StudentWhereInput = { deletedAt: null };
+    if (query.semester) where.semester = query.semester;
+    if (query.isDebarred !== undefined) where.isDebarred = query.isDebarred;
+    if (query.section) where.section = { name: query.section };
+    if (query.search) {
+      const q = query.search.trim();
+      where.OR = [
+        { user: { name: { contains: q, mode: 'insensitive' } } },
+        { rollNumber: { contains: q } },
+        { enrollmentNumber: { contains: q, mode: 'insensitive' } },
+      ];
     }
 
-    let result = MOCK_STUDENTS.map((s) => ({
-      ...s,
-      phone: '+91 98765 43210',
-      batch: '2022-2026',
-      attendancePercent: s.overallAttendance,
-      conductedClasses: 180,
-      attendedClasses: Math.round((s.overallAttendance / 100) * 180),
-      debarmentStatus: (s.isDebarred ? 'DEBARRED' : 'ELIGIBLE') as 'DEBARRED' | 'ELIGIBLE',
-      hallTicketStatus: (s.isDebarred ? 'WITHHELD' : 'RELEASED') as 'WITHHELD' | 'RELEASED',
-      medicalLeavesPending: 1,
-      feesDue: s.isDebarred ? 12500 : 0,
-      avatarUrl: '/assets/student-avatar.png',
-      address: 'Dehradun, Uttarakhand',
-    }));
-
-    if (params?.semester) {
-      result = result.filter((s) => s.semester === Number(params.semester));
-    }
-    if (params?.isDebarred !== undefined) {
-      const debarredBool = String(params.isDebarred) === 'true';
-      result = result.filter((s) => s.isDebarred === debarredBool);
-    }
-    if (params?.search) {
-      const q = params.search.toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.rollNumber.includes(q) ||
-          s.enrollmentNumber.toLowerCase().includes(q),
-      );
-    }
-    return result;
+    const students = await this.prisma.student.findMany({
+      where,
+      include: STUDENT_INCLUDE,
+      orderBy: { rollNumber: 'asc' },
+    });
+    const aggregates = await this.loadAggregates(students.map((s) => s.id));
+    return students.map((s) => this.toView(s, aggregates.get(s.id) ?? EMPTY_AGGREGATES));
   }
 
-  async findById(id: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const student = await this.prisma.student.findFirst({
-          where: {
-            OR: [
-              { id },
-              { rollNumber: id },
-              { enrollmentNumber: id },
-              { user: { email: id } },
-            ],
-          },
-          include: {
-            user: true,
-            department: true,
-            program: true,
-            section: true,
-          },
-        });
-        if (student) {
-          return {
-            id: student.id,
-            rollNumber: student.rollNumber,
-            enrollmentNumber: student.enrollmentNumber,
-            name: student.user.name,
-            email: student.user.email,
-            phone: student.user.phone || '+91 98765 43210',
-            department: student.department.name,
-            program: student.program.name,
-            semester: student.semester,
-            section: student.section?.name || 'CSE-6A',
-            batch: `${student.admissionYear}-${student.admissionYear + 4}`,
-            cgpa: student.cgpa,
-            attendancePercent: student.overallAttendance,
-            overallAttendance: student.overallAttendance,
-            conductedClasses: 180,
-            attendedClasses: Math.round((student.overallAttendance / 100) * 180),
-            debarmentStatus: student.isDebarred ? 'DEBARRED' : 'ELIGIBLE',
-            hallTicketStatus: student.isDebarred ? 'WITHHELD' : 'RELEASED',
-            medicalLeavesPending: 1,
-            feesDue: student.isDebarred ? 12500 : 0,
-            avatarUrl: student.user.avatarUrl || '/assets/student-avatar.png',
-            address: 'Dehradun, Uttarakhand',
-            isDebarred: student.isDebarred,
-            status: 'ACTIVE',
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
+  /** Looks up by id, roll number, enrollment number or email. */
+  async findById(identifier: string) {
+    const student = await this.prisma.student.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [
+          { id: identifier },
+          { rollNumber: identifier },
+          { enrollmentNumber: identifier },
+          { user: { email: identifier } },
+        ],
+      },
+      include: STUDENT_INCLUDE,
+    });
+    if (!student) throw new NotFoundException(`Student ${identifier} not found.`);
 
-    const s = MOCK_STUDENTS.find((s) => s.id === id || s.rollNumber === id) || MOCK_STUDENTS[0];
+    const aggregates = await this.loadAggregates([student.id]);
+    return this.toView(student, aggregates.get(student.id) ?? EMPTY_AGGREGATES);
+  }
+
+  async updateDebarmentStatus(identifier: string, status: DebarmentDecision) {
+    const { id } = await this.findById(identifier);
+    await this.prisma.student.update({ where: { id }, data: { isDebarred: status === 'DEBARRED' } });
+    return this.findById(id);
+  }
+
+  async getDebarmentStatus(identifier: string) {
+    const s = await this.findById(identifier);
     return {
-      ...s,
-      phone: '+91 98765 43210',
-      batch: '2022-2026',
-      attendancePercent: s.overallAttendance,
-      conductedClasses: 180,
-      attendedClasses: Math.round((s.overallAttendance / 100) * 180),
-      debarmentStatus: (s.isDebarred ? 'DEBARRED' : 'ELIGIBLE') as 'DEBARRED' | 'ELIGIBLE',
-      hallTicketStatus: (s.isDebarred ? 'WITHHELD' : 'RELEASED') as 'WITHHELD' | 'RELEASED',
-      medicalLeavesPending: 1,
-      feesDue: s.isDebarred ? 12500 : 0,
-      avatarUrl: '/assets/student-avatar.png',
-      address: 'Dehradun, Uttarakhand',
+      studentId: s.id,
+      rollNumber: s.rollNumber,
+      name: s.name,
+      overallAttendance: s.attendancePercent,
+      statutoryThreshold: ATTENDANCE_THRESHOLD,
+      isDebarred: s.isDebarred,
+      debarmentStatus: s.debarmentStatus,
+      regulationReference: 'UTU Ordinance 14(B) — Minimum 75% Attendance Requirement',
+      classesShortfall: classesNeededToReachThreshold(s.attendedClasses, s.conductedClasses),
     };
   }
 
-  async updateDebarmentStatus(studentId: string, status: string) {
-    const isDebarred = status === 'DEBARRED';
-    try {
-      const student = await this.prisma.student.findFirst({
-        where: { OR: [{ id: studentId }, { rollNumber: studentId }] },
-      });
-      if (student) {
-        await this.prisma.student.update({
-          where: { id: student.id },
-          data: { isDebarred },
-        });
-      }
-    } catch {
-      // Fallback
-    }
+  /** Attendance counts, outstanding fees and pending petitions for many students in three queries. */
+  private async loadAggregates(studentIds: string[]): Promise<Map<string, StudentAggregates>> {
+    const result = new Map<string, StudentAggregates>();
+    if (studentIds.length === 0) return result;
+    const get = (id: string) => {
+      if (!result.has(id)) result.set(id, { ...EMPTY_AGGREGATES });
+      return result.get(id)!;
+    };
 
-    const mock = MOCK_STUDENTS.find((s) => s.id === studentId);
-    if (mock) {
-      mock.isDebarred = isDebarred;
-    }
+    const [attendance, fees, petitions] = await Promise.all([
+      this.prisma.attendanceRecord.groupBy({
+        by: ['studentId', 'status'],
+        where: { studentId: { in: studentIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.studentFee.groupBy({
+        by: ['studentId'],
+        where: { studentId: { in: studentIds }, status: { not: FeeStatus.PAID } },
+        _sum: { pendingAmount: true },
+      }),
+      this.prisma.attendancePetition.groupBy({
+        by: ['studentId'],
+        where: { studentId: { in: studentIds }, status: PetitionStatus.PENDING },
+        _count: { _all: true },
+      }),
+    ]);
 
-    return this.findById(studentId);
+    for (const row of attendance) {
+      const agg = get(row.studentId);
+      agg.conducted += row._count._all;
+      if (countsAsAttended(row.status as AttendanceStatus)) agg.attended += row._count._all;
+    }
+    for (const row of fees) get(row.studentId).feesDue = row._sum.pendingAmount ?? 0;
+    for (const row of petitions) get(row.studentId).pendingPetitions = row._count._all;
+    return result;
   }
 
-  async toggleHallTicket(studentId: string) {
-    const student = await this.findById(studentId);
-    const newStatus = (student as any).hallTicketStatus === 'RELEASED' ? 'WITHHELD' : 'RELEASED';
-    (student as any).hallTicketStatus = newStatus;
-    return student;
-  }
-
-  async getDebarmentStatus(studentId: string) {
-    const student = await this.findById(studentId);
-    const attendance = (student as any).overallAttendance || 84.5;
-    const isDebarred = attendance < 75.0;
-
+  private toView(s: StudentRow, agg: StudentAggregates) {
     return {
-      studentId: (student as any).id,
-      rollNumber: (student as any).rollNumber,
-      name: (student as any).name,
-      overallAttendance: attendance,
-      statutoryThreshold: 75.0,
-      isDebarred,
-      debarmentStatus: isDebarred ? 'DEBARRED' : 'ELIGIBLE',
-      regulationReference: 'UTU Ordinance 14(B) - Minimum 75% Attendance Requirement',
-      classesShortfall: isDebarred ? 6 : 0,
-      appealPermitted: true,
+      id: s.id,
+      rollNumber: s.rollNumber,
+      enrollmentNumber: s.enrollmentNumber,
+      name: s.user.name,
+      email: s.user.email,
+      phone: s.user.phone,
+      avatarUrl: s.user.avatarUrl,
+      department: s.department.name,
+      departmentCode: s.department.code,
+      program: s.program.name,
+      semester: s.semester,
+      section: s.section?.name ?? null,
+      batch: `${s.admissionYear}-${s.admissionYear + 4}`,
+      cgpa: s.cgpa,
+      attendancePercent: s.overallAttendance,
+      conductedClasses: agg.conducted,
+      attendedClasses: agg.attended,
+      isDebarred: s.isDebarred,
+      debarmentStatus: s.isDebarred ? ('DEBARRED' as const) : ('ELIGIBLE' as const),
+      // Hall tickets are not stored separately: they are withheld exactly when the student is debarred.
+      hallTicketStatus: s.isDebarred ? ('WITHHELD' as const) : ('RELEASED' as const),
+      pendingAttendancePetitions: agg.pendingPetitions,
+      feesDue: agg.feesDue,
+      kycVerified: s.kycVerified,
     };
   }
 }

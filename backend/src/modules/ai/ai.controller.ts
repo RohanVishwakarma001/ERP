@@ -1,23 +1,27 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 import { AiService } from './ai.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators';
+import { CurrentUser } from '../../common/decorators';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+
+class ChatQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  query: string;
+}
 
 @ApiTags('JBIT AI Campus Copilot')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('ai')
 export class AiController {
   constructor(private readonly aiService: AiService) {}
 
   @Post('chat')
-  @ApiOperation({ summary: 'Send conversational query to JBIT Campus Copilot' })
-  async chat(@CurrentUser() user: any, @Body('query') query: string) {
-    return this.aiService.processCampusQuery(
-      user.id,
-      user.studentId,
-      query,
-    );
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Ask the campus copilot a question answered from the caller's own records" })
+  chat(@CurrentUser() user: AuthUser, @Body() dto: ChatQueryDto) {
+    return this.aiService.processCampusQuery(user, dto.query);
   }
 }

@@ -1,5 +1,3 @@
-import ExamControllerPage from "@/app/admin/exams/page";
+import { ExamsScreen } from "@/components/screens/exams-screen";
 
-export default function ExamDashboardPage() {
-  return <ExamControllerPage />;
-}
+export default ExamsScreen;

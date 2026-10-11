@@ -1,4 +1,4 @@
-import { UserRole } from "@/types";
+import type { UserRole } from "@/types";
 
 export type Permission =
   | "departments:manage"
@@ -22,26 +22,29 @@ export type Permission =
   | "audit:view"
   | "settings:system";
 
+const ADMIN_PERMISSIONS: Permission[] = [
+  "departments:manage",
+  "departments:view",
+  "students:roster",
+  "students:debarment:manage",
+  "faculty:manage",
+  "timetable:engine",
+  "exams:controller",
+  "exams:mark_locking",
+  "placement:drives:manage",
+  "placement:recruiter:evaluate",
+  "fees:structure:manage",
+  "fees:collect",
+  "library:manage",
+  "hostel:manage",
+  "transport:manage",
+  "audit:view",
+  "settings:system",
+];
+
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  ADMIN: [
-    "departments:manage",
-    "departments:view",
-    "students:roster",
-    "students:debarment:manage",
-    "faculty:manage",
-    "timetable:engine",
-    "exams:controller",
-    "exams:mark_locking",
-    "placement:drives:manage",
-    "placement:recruiter:evaluate",
-    "fees:structure:manage",
-    "fees:collect",
-    "library:manage",
-    "hostel:manage",
-    "transport:manage",
-    "audit:view",
-    "settings:system",
-  ],
+  SUPER_ADMIN: ADMIN_PERMISSIONS,
+  ADMIN: ADMIN_PERMISSIONS,
   HOD: [
     "departments:view",
     "students:roster",

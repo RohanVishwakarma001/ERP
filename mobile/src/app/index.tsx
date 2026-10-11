@@ -1,17 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Platform,
-  Alert,
-  BackHandler,
-  ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
+import { Award, BookOpen, Calendar, CheckCheck, Home, Layers, QrCode, type LucideIcon } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/auth-store';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
+import { Colors, MinTouchTarget, Spacing, Type } from '@/constants/theme';
 import { AppHeader } from '@/components/common/header';
 import { LoginView } from '@/components/auth/login-view';
 import { StudentHomeView } from '@/components/student/student-home-view';
@@ -24,499 +17,243 @@ import { FacultyAttendanceView } from '@/components/faculty/faculty-attendance-v
 import { FacultyMarksView } from '@/components/faculty/faculty-marks-view';
 import { FacultyTimetableView } from '@/components/faculty/faculty-timetable-view';
 import { FacultyMoreView } from '@/components/faculty/faculty-more-view';
+import { StaffHomeView } from '@/components/staff/staff-home-view';
 import { QrScannerModal } from '@/components/modals/qr-scanner-modal';
 import { QrBroadcasterModal } from '@/components/modals/qr-broadcaster-modal';
 import { AiCopilotModal } from '@/components/modals/ai-copilot-modal';
-import {
-  Home,
-  BookOpen,
-  QrCode,
-  Calendar,
-  Layers,
-  Award,
-  CheckCheck,
-} from 'lucide-react-native';
+import { NotificationsSheet } from '@/components/modals/notifications-sheet';
+import type { FacultyClassItem } from '@/types';
+
+const C = Colors.light;
+
+type StudentTab = 'home' | 'academics' | 'attendance' | 'schedule' | 'more';
+type FacultyTab = 'home' | 'attendance' | 'marks' | 'timetable' | 'more';
+
+interface TabSpec<T extends string> {
+  key: T;
+  label: string;
+  icon: LucideIcon;
+  /** The prominent centre action (student QR attendance). */
+  primary?: boolean;
+}
+
+const STUDENT_TABS: TabSpec<StudentTab>[] = [
+  { key: 'home', label: 'Home', icon: Home },
+  { key: 'academics', label: 'Academics', icon: BookOpen },
+  { key: 'attendance', label: 'Attendance', icon: QrCode, primary: true },
+  { key: 'schedule', label: 'Schedule', icon: Calendar },
+  { key: 'more', label: 'More', icon: Layers },
+];
+
+const FACULTY_TABS: TabSpec<FacultyTab>[] = [
+  { key: 'home', label: 'Home', icon: Home },
+  { key: 'attendance', label: 'Attendance', icon: CheckCheck },
+  { key: 'marks', label: 'Marks', icon: Award },
+  { key: 'timetable', label: 'Schedule', icon: Calendar },
+  { key: 'more', label: 'More', icon: Layers },
+];
+
+const TEACHING_ROLES = new Set(['FACULTY', 'HOD']);
 
 export default function MobileAppRoot() {
   const { user, authStatus, restoreSession } = useAuthStore();
-  const isFaculty = user?.role === 'FACULTY' || user?.role === 'HOD';
 
-  // Navigation tab state
-  const [studentTab, setStudentTab] = useState<'home' | 'academics' | 'attendance' | 'schedule' | 'more'>('home');
-  const [facultyTab, setFacultyTab] = useState<'home' | 'attendance' | 'marks' | 'timetable' | 'more'>('home');
-
-  // Modals state
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [broadcasterVisible, setBroadcasterVisible] = useState(false);
-  const [copilotVisible, setCopilotVisible] = useState(false);
-
-  // Restore authenticated session on mount
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
 
-  // Android Hardware Back Button Handling with modal and deep stack prioritization
-  useEffect(() => {
-    const onBackPress = () => {
-      // 1. Modals take top priority: close modal and intercept back action
-      if (copilotVisible) {
-        setCopilotVisible(false);
-        return true;
-      }
-      if (scannerVisible) {
-        setScannerVisible(false);
-        return true;
-      }
-      if (broadcasterVisible) {
-        setBroadcasterVisible(false);
-        return true;
-      }
-
-      // 2. Subtab screens: return to root home tab
-      if (isFaculty && facultyTab !== 'home') {
-        setFacultyTab('home');
-        return true;
-      }
-      if (!isFaculty && studentTab !== 'home') {
-        setStudentTab('home');
-        return true;
-      }
-
-      // 3. At root home: allow native exit/minimize behavior without jumping to login
-      return false;
-    };
-
-    const backSubscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => backSubscription.remove();
-  }, [copilotVisible, scannerVisible, broadcasterVisible, isFaculty, facultyTab, studentTab]);
-
-  const handleOpenNotifications = () => {
-    Alert.alert(
-      'Campus Notifications',
-      '1. UTU Practical Exam Schedule Published (Starts June 2)\n2. Infosys SpringBoard Registration Open\n3. Library Book Due: Operating System Concepts (Due May 30)'
-    );
-  };
-
-  // 1. Splash / Loading Screen during session check
   if (authStatus === 'loading') {
     return (
-      <SafeAreaView style={styles.splashSafeArea}>
-        <View style={styles.splashContainer}>
-          <View style={styles.splashLogoBadge}>
-            <Text style={styles.splashLogoText}>JBIT</Text>
-          </View>
-          <Text style={styles.splashTitle}>JB INSTITUTE OF TECHNOLOGY</Text>
-          <Text style={styles.splashSubtitle}>CAMPUS ERP ECOSYSTEM</Text>
-          <View style={styles.splashSpinnerRow}>
-            <ActivityIndicator size="small" color="#0B3B60" />
-            <Text style={styles.splashStatusText}>Restoring secure session...</Text>
-          </View>
+      <SafeAreaView style={styles.splash}>
+        <Image source={require('@/assets/images/jbit-logo.png')} style={styles.splashLogo} contentFit="contain" accessibilityLabel="JBIT logo" />
+        <Text style={styles.splashTitle}>JBIT Campus ERP</Text>
+        <Text style={styles.splashSubtitle}>JB Institute of Technology, Dehradun</Text>
+        <View style={styles.splashStatus} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="small" color={C.primaryContainer} />
+          <Text style={styles.splashStatusText}>Restoring your session…</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 2. Unauthenticated state: Institutional Login
   if (authStatus === 'unauthenticated' || !user) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.loginSafeArea}>
         <LoginView />
       </SafeAreaView>
     );
   }
 
-  // 3. Authenticated App Flow: Role determined strictly from backend
-  const activeTab = isFaculty ? facultyTab : studentTab;
-  const canGoBack = activeTab !== 'home';
-  const handleBack = () => {
-    if (isFaculty) {
-      setFacultyTab('home');
-    } else {
-      setStudentTab('home');
-    }
-  };
+  // Keyed by account: signing in as someone else starts with fresh tabs and closed sheets.
+  return <SignedInApp key={user.id} role={user.role} />;
+}
+
+function SignedInApp({ role }: { role: string }) {
+  const audience = role === 'STUDENT' ? 'student' : TEACHING_ROLES.has(role) ? 'teaching' : 'staff';
+
+  const [studentTab, setStudentTab] = useState<StudentTab>('home');
+  const [facultyTab, setFacultyTab] = useState<FacultyTab>('home');
+
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [broadcastClass, setBroadcastClass] = useState<FacultyClassItem | null>(null);
+  const broadcasterVisible = broadcastClass !== null;
+  const [copilotVisible, setCopilotVisible] = useState(false);
+  const [notificationsVisible, setNotificationsVisible] = useState(false);
+
+  // Android back: close the top-most sheet first, then return to Home, then let the OS handle it.
+  useEffect(() => {
+    const onBackPress = () => {
+      if (notificationsVisible) return setNotificationsVisible(false), true;
+      if (copilotVisible) return setCopilotVisible(false), true;
+      if (scannerVisible) return setScannerVisible(false), true;
+      if (broadcasterVisible) return setBroadcastClass(null), true;
+      if (audience === 'teaching' && facultyTab !== 'home') return setFacultyTab('home'), true;
+      if (audience === 'student' && studentTab !== 'home') return setStudentTab('home'), true;
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [notificationsVisible, copilotVisible, scannerVisible, broadcasterVisible, audience, facultyTab, studentTab]);
+
+  const header = (
+    <AppHeader
+      canGoBack={audience === 'student' ? studentTab !== 'home' : audience === 'teaching' ? facultyTab !== 'home' : false}
+      onBack={() => (audience === 'teaching' ? setFacultyTab('home') : setStudentTab('home'))}
+      title={
+        audience === 'student'
+          ? STUDENT_TABS.find((t) => t.key === studentTab)?.label
+          : FACULTY_TABS.find((t) => t.key === facultyTab)?.label
+      }
+      onOpenCopilot={audience === 'staff' ? undefined : () => setCopilotVisible(true)}
+      onOpenNotifications={() => setNotificationsVisible(true)}
+    />
+  );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        {/* Institutional Top Bar with Back affordance on sub-pages */}
-        <AppHeader
-          canGoBack={canGoBack}
-          onBack={handleBack}
-          title={isFaculty ? 'Console' : 'Dashboard'}
-          onOpenCopilot={() => setCopilotVisible(true)}
-          onOpenNotifications={handleOpenNotifications}
-        />
+    // Bottom inset is applied by the tab bar (or the staff screen) itself, so it's never doubled.
+    <SafeAreaView style={styles.safeArea} edges={audience === 'staff' ? ['top', 'left', 'right', 'bottom'] : ['top', 'left', 'right']}>
+      {header}
 
-        {/* Main Content Area */}
-        <View style={styles.mainContent}>
-          {isFaculty ? (
-            <>
-              {facultyTab === 'home' && (
-                <FacultyHomeView
-                  onOpenBroadcaster={() => setBroadcasterVisible(true)}
-                  onNavigateTab={(tab) => setFacultyTab(tab as any)}
-                />
-              )}
-              {facultyTab === 'attendance' && (
-                <FacultyAttendanceView
-                  onOpenBroadcaster={() => setBroadcasterVisible(true)}
-                />
-              )}
-              {facultyTab === 'marks' && <FacultyMarksView />}
-              {facultyTab === 'timetable' && <FacultyTimetableView />}
-              {facultyTab === 'more' && (
-                <FacultyMoreView
-                  onOpenCopilot={() => setCopilotVisible(true)}
-                />
-              )}
-            </>
-          ) : (
-            <>
-              {studentTab === 'home' && (
-                <StudentHomeView
-                  onOpenQrScanner={() => setScannerVisible(true)}
-                  onOpenCopilot={() => setCopilotVisible(true)}
-                  onNavigateTab={(tab) => setStudentTab(tab as any)}
-                />
-              )}
-              {studentTab === 'academics' && <StudentAcademicsView />}
-              {studentTab === 'attendance' && (
-                <StudentAttendanceView
-                  onOpenQrScanner={() => setScannerVisible(true)}
-                />
-              )}
-              {studentTab === 'schedule' && <StudentScheduleView />}
-              {studentTab === 'more' && (
-                <StudentMoreView
-                  onOpenCopilot={() => setCopilotVisible(true)}
-                />
-              )}
-            </>
-          )}
-        </View>
+      <View style={styles.main}>
+        {audience === 'staff' && <StaffHomeView />}
 
-        {/* Bottom Tab Bar */}
-        <View style={styles.bottomTabBar}>
-          {isFaculty ? (
-            <>
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setFacultyTab('home')}
-                accessibilityLabel="Faculty Console tab"
-              >
-                <Home
-                  size={20}
-                  color={facultyTab === 'home' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    facultyTab === 'home' && styles.activeTabLabel,
-                  ]}
-                >
-                  Console
-                </Text>
-              </TouchableOpacity>
+        {audience === 'teaching' && (
+          <>
+            {facultyTab === 'home' && <FacultyHomeView onOpenBroadcaster={setBroadcastClass} onNavigateTab={(tab) => setFacultyTab(tab as FacultyTab)} />}
+            {facultyTab === 'attendance' && <FacultyAttendanceView onOpenBroadcaster={setBroadcastClass} />}
+            {facultyTab === 'marks' && <FacultyMarksView />}
+            {facultyTab === 'timetable' && <FacultyTimetableView />}
+            {facultyTab === 'more' && <FacultyMoreView onOpenCopilot={() => setCopilotVisible(true)} />}
+          </>
+        )}
 
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setFacultyTab('attendance')}
-                accessibilityLabel="Faculty Attendance tab"
-              >
-                <CheckCheck
-                  size={20}
-                  color={facultyTab === 'attendance' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    facultyTab === 'attendance' && styles.activeTabLabel,
-                  ]}
-                >
-                  Attendance
-                </Text>
-              </TouchableOpacity>
+        {audience === 'student' && (
+          <>
+            {studentTab === 'home' && (
+              <StudentHomeView
+                onOpenQrScanner={() => setScannerVisible(true)}
+                onOpenCopilot={() => setCopilotVisible(true)}
+                onNavigateTab={(tab) => setStudentTab(tab as StudentTab)}
+              />
+            )}
+            {studentTab === 'academics' && <StudentAcademicsView />}
+            {studentTab === 'attendance' && <StudentAttendanceView onOpenQrScanner={() => setScannerVisible(true)} />}
+            {studentTab === 'schedule' && <StudentScheduleView />}
+            {studentTab === 'more' && <StudentMoreView onOpenCopilot={() => setCopilotVisible(true)} />}
+          </>
+        )}
+      </View>
 
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setFacultyTab('marks')}
-                accessibilityLabel="Faculty Marks tab"
-              >
-                <Award
-                  size={20}
-                  color={facultyTab === 'marks' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    facultyTab === 'marks' && styles.activeTabLabel,
-                  ]}
-                >
-                  Marks
-                </Text>
-              </TouchableOpacity>
+      {audience === 'student' && <TabBar tabs={STUDENT_TABS} active={studentTab} onChange={setStudentTab} />}
+      {audience === 'teaching' && <TabBar tabs={FACULTY_TABS} active={facultyTab} onChange={setFacultyTab} />}
 
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setFacultyTab('timetable')}
-                accessibilityLabel="Faculty Schedule tab"
-              >
-                <Calendar
-                  size={20}
-                  color={facultyTab === 'timetable' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    facultyTab === 'timetable' && styles.activeTabLabel,
-                  ]}
-                >
-                  Schedule
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setFacultyTab('more')}
-                accessibilityLabel="Faculty More options tab"
-              >
-                <Layers
-                  size={20}
-                  color={facultyTab === 'more' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    facultyTab === 'more' && styles.activeTabLabel,
-                  ]}
-                >
-                  More
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setStudentTab('home')}
-                accessibilityLabel="Student Home tab"
-              >
-                <Home
-                  size={20}
-                  color={studentTab === 'home' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    studentTab === 'home' && styles.activeTabLabel,
-                  ]}
-                >
-                  Home
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setStudentTab('academics')}
-                accessibilityLabel="Student Academics tab"
-              >
-                <BookOpen
-                  size={20}
-                  color={studentTab === 'academics' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    studentTab === 'academics' && styles.activeTabLabel,
-                  ]}
-                >
-                  Academics
-                </Text>
-              </TouchableOpacity>
-
-              {/* Center Prominent Attendance Tab */}
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setStudentTab('attendance')}
-                accessibilityLabel="Student QR Attendance tab"
-              >
-                <View style={styles.centerTabBadge}>
-                  <QrCode size={20} color="#FFFFFF" />
-                </View>
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    studentTab === 'attendance' && styles.activeTabLabel,
-                  ]}
-                >
-                  Attendance
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setStudentTab('schedule')}
-                accessibilityLabel="Student Schedule tab"
-              >
-                <Calendar
-                  size={20}
-                  color={studentTab === 'schedule' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    studentTab === 'schedule' && styles.activeTabLabel,
-                  ]}
-                >
-                  Schedule
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.tabItem}
-                onPress={() => setStudentTab('more')}
-                accessibilityLabel="Student More options tab"
-              >
-                <Layers
-                  size={20}
-                  color={studentTab === 'more' ? '#0B3B60' : '#94A3B8'}
-                />
-                <Text
-                  style={[
-                    styles.tabLabel,
-                    studentTab === 'more' && styles.activeTabLabel,
-                  ]}
-                >
-                  More
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-        {/* Global Modals */}
+      {audience === 'student' && (
         <QrScannerModal
+          key={scannerVisible ? 'scanner-open' : 'scanner-closed'}
           visible={scannerVisible}
           onClose={() => setScannerVisible(false)}
-          onSuccess={(detail) => {
-            Alert.alert('Verified', `Attendance marked for: ${detail}`);
-          }}
+          onSuccess={(detail) => Alert.alert('Attendance marked', detail)}
         />
+      )}
 
+      {audience === 'teaching' && (
+        // Keyed per class so every broadcast starts with a fresh scan tally.
         <QrBroadcasterModal
-          visible={broadcasterVisible}
-          onClose={() => setBroadcasterVisible(false)}
+          key={broadcastClass ? `broadcast-${broadcastClass.id}` : 'broadcast-closed'}
+          classItem={broadcastClass}
+          onClose={() => setBroadcastClass(null)}
         />
+      )}
 
-        <AiCopilotModal
-          visible={copilotVisible}
-          onClose={() => setCopilotVisible(false)}
-        />
-      </View>
+      {audience !== 'staff' && <AiCopilotModal visible={copilotVisible} onClose={() => setCopilotVisible(false)} />}
+      <NotificationsSheet visible={notificationsVisible} onClose={() => setNotificationsVisible(false)} />
     </SafeAreaView>
   );
 }
 
+function TabBar<T extends string>({ tabs, active, onChange }: { tabs: TabSpec<T>[]; active: T; onChange: (tab: T) => void }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, Spacing.sm) }]} accessibilityRole="tablist">
+      {tabs.map((tab) => {
+        const selected = tab.key === active;
+        const Icon = tab.icon;
+        return (
+          <Pressable
+            key={tab.key}
+            onPress={() => onChange(tab.key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={tab.label}
+            style={({ pressed }) => [styles.tab, pressed && { opacity: 0.6 }]}
+          >
+            {tab.primary ? (
+              <View style={[styles.primaryTab, selected && styles.primaryTabSelected]}>
+                <Icon size={22} color="#FFFFFF" />
+              </View>
+            ) : (
+              <Icon size={24} color={selected ? C.tabActive : C.tabInactive} strokeWidth={selected ? 2.4 : 2} />
+            )}
+            <Text style={[styles.tabLabel, selected && styles.tabLabelSelected]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  splashSafeArea: {
-    flex: 1,
-    backgroundColor: '#002541',
-  },
-  splashContainer: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  splashLogoBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: 20,
-    backgroundColor: '#002541',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    ...Shadows.lg,
-  },
-  splashLogoText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 24,
-    letterSpacing: 1,
-  },
-  splashTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#002541',
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
-  splashSubtitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 1.2,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  splashSpinnerRow: {
+  safeArea: { flex: 1, backgroundColor: C.card },
+  loginSafeArea: { flex: 1, backgroundColor: C.background },
+  main: { flex: 1, backgroundColor: C.background },
+
+  splash: { flex: 1, backgroundColor: C.background, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
+  splashLogo: { width: 88, height: 88, marginBottom: Spacing.lg },
+  splashTitle: { ...Type.title, color: C.text, textAlign: 'center' },
+  splashSubtitle: { ...Type.subhead, color: C.textSecondary, marginTop: 4, textAlign: 'center' },
+  splashStatus: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xxxl },
+  splashStatusText: { ...Type.subhead, color: C.textSecondary },
+
+  tabBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 28,
+    backgroundColor: C.tabBar,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: C.tabBarBorder,
+    paddingTop: 6,
   },
-  splashStatusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0B3B60',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  mainContent: {
-    flex: 1,
-  },
-  bottomTabBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    ...Shadows.md,
-  },
-  tabItem: {
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, minHeight: MinTouchTarget + 6 },
+  tabLabel: { fontSize: 11, lineHeight: 13, fontWeight: '500', color: C.tabInactive },
+  tabLabelSelected: { color: C.tabActive, fontWeight: '700' },
+  primaryTab: {
+    width: 44,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: C.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    gap: 3,
+    opacity: 0.85,
   },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  activeTabLabel: {
-    color: '#0B3B60',
-    fontWeight: '800',
-  },
-  centerTabBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: '#002541',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -8,
-    ...Shadows.sm,
-  },
+  primaryTabSelected: { opacity: 1 },
 });

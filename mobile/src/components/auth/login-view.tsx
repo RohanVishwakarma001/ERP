@@ -1,3 +1,6 @@
+import { Image } from 'expo-image';
+import { openBrowserAsync } from 'expo-web-browser';
+import { env } from '@/config/env';
 import React, { useState } from 'react';
 import {
   View,
@@ -13,21 +16,19 @@ import {
   Keyboard,
 } from 'react-native';
 import { useAuthStore } from '@/stores/auth-store';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
+import { Shadows, Spacing } from '@/constants/theme';
 import {
   Mail,
   Lock,
   Eye,
   EyeOff,
-  ShieldCheck,
   ArrowRight,
   AlertCircle,
-  GraduationCap,
   Sparkles,
 } from 'lucide-react-native';
 
 export function LoginView() {
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, isLoggingIn: isLoading, error, clearError } = useAuthStore();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -50,15 +51,14 @@ export function LoginView() {
       return;
     }
 
-    const res = await login(trimmedId, trimmedPass);
-    if (!res.success && res.error) {
-      setLocalError(res.error);
-    }
+    // On failure the store exposes the server's message via `error`.
+    await login(trimmedId, password);
   };
 
-  const handleQuickFill = (id: string, pass: string) => {
+  // The seed password is never committed: dev builds read it from mobile/.env.
+  const handleQuickFill = (id: string) => {
     setIdentifier(id);
-    setPassword(pass);
+    setPassword(process.env.EXPO_PUBLIC_DEV_SEED_PASSWORD ?? '');
     setLocalError(null);
     clearError();
   };
@@ -78,26 +78,23 @@ export function LoginView() {
         >
           {/* Top Brand Banner */}
           <View style={styles.brandContainer}>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoText}>JBIT</Text>
-            </View>
-            <Text style={styles.institutionName}>JB INSTITUTE OF TECHNOLOGY</Text>
-            <Text style={styles.campusLocation}>DEHRADUN • UTTARAKHAND</Text>
-            <View style={styles.affiliationRow}>
-              <GraduationCap size={13} color="#0284C7" />
-              <Text style={styles.affiliationText}>
-                Affiliated to VMSB UTU • SDSUV • UBTER • Approved by AICTE
-              </Text>
-            </View>
+            <Image
+              source={require('@/assets/images/jbit-logo.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+              accessibilityLabel="JBIT logo"
+            />
+            <Text style={styles.institutionName} accessibilityRole="header">
+              JB Institute of Technology
+            </Text>
+            <Text style={styles.campusLocation}>Dehradun, Uttarakhand</Text>
           </View>
 
           {/* Form Card */}
           <View style={styles.formCard}>
             <View style={styles.formHeader}>
-              <Text style={styles.formTitle}>Enterprise ERP Portal</Text>
-              <Text style={styles.formSubtitle}>
-                Single Sign-On for Students, Faculty &amp; Academic Staff
-              </Text>
+              <Text style={styles.formTitle}>Sign in</Text>
+              <Text style={styles.formSubtitle}>Use the credentials issued by the institute.</Text>
             </View>
 
             {/* Error Notification */}
@@ -110,12 +107,12 @@ export function LoginView() {
 
             {/* Identifier Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>INSTITUTIONAL ID / ROLL NO / EMAIL</Text>
+              <Text style={styles.inputLabel}>Email, employee ID or roll number</Text>
               <View style={styles.inputWrapper}>
                 <Mail size={18} color="#94A3B8" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. 220102048 or aarav.sharma@jbitdoon.edu.in"
+                  placeholder="e.g. 220102048"
                   placeholderTextColor="#94A3B8"
                   value={identifier}
                   onChangeText={(text) => {
@@ -128,19 +125,22 @@ export function LoginView() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
-                  accessibilityLabel="Institutional ID, Roll Number, or Email"
+                  accessibilityLabel="Email, employee ID or roll number"
+                  textContentType="username"
+                  autoComplete="username"
+                  returnKeyType="next"
                 />
               </View>
             </View>
 
             {/* Password Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>PASSWORD</Text>
+              <Text style={styles.inputLabel}>Password</Text>
               <View style={styles.inputWrapper}>
                 <Lock size={18} color="#94A3B8" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter your security password"
+                  placeholder="Your password"
                   placeholderTextColor="#94A3B8"
                   value={password}
                   onChangeText={(text) => {
@@ -154,11 +154,17 @@ export function LoginView() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   accessibilityLabel="Password"
+                  textContentType="password"
+                  autoComplete="current-password"
+                  returnKeyType="go"
+                  onSubmitEditing={handleSignIn}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeBtn}
                   accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  accessibilityRole="button"
+                  hitSlop={8}
                 >
                   {showPassword ? (
                     <EyeOff size={18} color="#64748B" />
@@ -175,28 +181,33 @@ export function LoginView() {
               onPress={handleSignIn}
               disabled={isLoading}
               activeOpacity={0.8}
-              accessibilityLabel="Sign In to Campus ERP"
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+              accessibilityState={{ disabled: isLoading, busy: isLoading }}
             >
               {isLoading ? (
                 <View style={styles.loadingRow}>
                   <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={styles.submitBtnText}>Authenticating with Server...</Text>
+                  <Text style={styles.submitBtnText}>Signing in…</Text>
                 </View>
               ) : (
                 <View style={styles.submitRow}>
-                  <Text style={styles.submitBtnText}>Sign In to Campus ERP</Text>
+                  <Text style={styles.submitBtnText}>Sign in</Text>
                   <ArrowRight size={18} color="#FFFFFF" />
                 </View>
               )}
             </TouchableOpacity>
 
-            {/* Security Indicator */}
-            <View style={styles.securityRow}>
-              <ShieldCheck size={14} color="#10B981" />
-              <Text style={styles.securityText}>
-                Encrypted Session • University Identity Node 04
-              </Text>
-            </View>
+            {env.webUrl && (
+              <TouchableOpacity
+                onPress={() => openBrowserAsync(`${env.webUrl}/forgot-password`)}
+                style={styles.forgotBtn}
+                accessibilityRole="link"
+                accessibilityHint="Opens password reset in an in-app browser"
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Development Quick-Fill Helper (Strictly DEV only, sets form fields for real auth) */}
@@ -213,7 +224,7 @@ export function LoginView() {
                 <TouchableOpacity
                   style={styles.devChip}
                   onPress={() =>
-                    handleQuickFill('aarav.sharma@jbitdoon.edu.in', 'Jbit@2026')
+                    handleQuickFill('aarav.sharma@jbitdoon.edu.in')
                   }
                 >
                   <Text style={styles.devChipText}>Student: Aarav</Text>
@@ -222,7 +233,7 @@ export function LoginView() {
                 <TouchableOpacity
                   style={styles.devChip}
                   onPress={() =>
-                    handleQuickFill('hod.cse@jbitdoon.edu.in', 'Jbit@2026')
+                    handleQuickFill('hod.cse@jbitdoon.edu.in')
                   }
                 >
                   <Text style={styles.devChipText}>Faculty: Dr. Bhatt</Text>
@@ -231,7 +242,7 @@ export function LoginView() {
                 <TouchableOpacity
                   style={styles.devChip}
                   onPress={() =>
-                    handleQuickFill('registrar@jbitdoon.edu.in', 'Jbit@2026')
+                    handleQuickFill('registrar@jbitdoon.edu.in')
                   }
                 >
                   <Text style={styles.devChipText}>Admin: Registrar</Text>
@@ -256,7 +267,7 @@ export function LoginView() {
 const styles = StyleSheet.create({
   keyboardAvoid: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   scrollContainer: {
     flex: 1,
@@ -273,24 +284,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
-  logoBadge: {
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    backgroundColor: '#002541',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#0B3B60',
-    ...Shadows.md,
-  },
-  logoText: {
-    color: '#FFFFFF',
-    fontWeight: '900',
-    fontSize: 20,
-    letterSpacing: 1,
-  },
+  logoImage: { width: 72, height: 72, marginBottom: 12 },
+  forgotBtn: { alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, marginTop: 4 },
+  forgotText: { fontSize: 15, fontWeight: '600', color: '#0B3B60' },
   institutionName: {
     fontSize: 16,
     fontWeight: '900',
@@ -299,29 +295,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   campusLocation: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#64748B',
+    color: '#636366',
     letterSpacing: 1,
     marginTop: 2,
     textAlign: 'center',
-  },
-  affiliationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
-    backgroundColor: '#F0F9FF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  affiliationText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#0369A1',
   },
   formCard: {
     width: '100%',
@@ -329,7 +308,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     padding: Spacing.xl,
     ...Shadows.lg,
   },
@@ -339,11 +318,11 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   formSubtitle: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     marginTop: 3,
   },
   errorBanner: {
@@ -370,18 +349,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inputLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#475569',
+    color: '#48484A',
     letterSpacing: 0.6,
     marginBottom: 6,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#D1D1D6',
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 48,
@@ -392,7 +371,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14,
-    color: '#0F172A',
+    color: '#1C1C1E',
     height: '100%',
   },
   eyeBtn: {
@@ -425,26 +404,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  securityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 16,
-  },
-  securityText: {
-    fontSize: 11,
-    color: '#64748B',
-    fontWeight: '500',
-  },
   devCard: {
     width: '100%',
     maxWidth: 420,
     marginTop: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     padding: 12,
   },
   devHeader: {
@@ -454,14 +421,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   devTitle: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0B3B60',
     letterSpacing: 0.5,
   },
   devSubtitle: {
-    fontSize: 10,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     marginBottom: 8,
   },
   devChipsRow: {
@@ -472,13 +439,13 @@ const styles = StyleSheet.create({
   devChip: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#D1D1D6',
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 5,
   },
   devChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
@@ -487,14 +454,14 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   footerText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#94A3B8',
+    color: '#737378',
     letterSpacing: 0.8,
   },
   footerVersion: {
-    fontSize: 10,
-    color: '#CBD5E1',
+    fontSize: 12,
+    color: '#D1D1D6',
     marginTop: 2,
   },
 });

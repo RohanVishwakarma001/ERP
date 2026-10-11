@@ -1,5 +1,3 @@
-import FinanceDashboardPage from "@/app/finance/dashboard/page";
+import { FeeLedgerScreen } from "@/components/screens/fee-ledger-screen";
 
-export default function AdminFeesPage() {
-  return <FinanceDashboardPage />;
-}
+export default FeeLedgerScreen;

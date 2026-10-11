@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
+import { Controller, Post, Body, Get, HttpCode, HttpStatus } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -17,8 +9,8 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
-import { Public, CurrentUser } from '../common/decorators';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Public, CurrentUser } from '../../common/decorators';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
 
 @ApiTags('Authentication & Identity')
 @Controller('auth')
@@ -36,6 +28,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Rotate expired access token using refresh token' })
@@ -70,15 +63,13 @@ export class AuthController {
     return this.authService.resetPassword(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('me')
-  @ApiOperation({ summary: 'Get current authenticated user profile and permissions' })
-  async getProfile(@CurrentUser() user: any) {
+  @ApiOperation({ summary: 'Get current authenticated user identity' })
+  async getProfile(@CurrentUser() user: AuthUser) {
     return user;
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('logout')
   @HttpCode(HttpStatus.OK)

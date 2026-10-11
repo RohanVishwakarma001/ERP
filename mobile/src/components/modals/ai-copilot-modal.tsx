@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -9,9 +9,17 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
-import { X, Sparkles, Send, Bot, User, ArrowRight } from 'lucide-react-native';
-import { apiClient } from '@/services/api-client';
+import { Spacing } from '@/constants/theme';
+import {
+  X,
+  Sparkles,
+  Send,
+  Bot,
+  User,
+} from 'lucide-react-native';
+import { useAuthStore } from '@/stores/auth-store';
+import { useAskCopilot } from '@/features/campus';
+import { getErrorMessage } from '@/lib/api/api-error';
 
 interface AiCopilotModalProps {
   visible: boolean;
@@ -29,68 +37,41 @@ interface Message {
 }
 
 export function AiCopilotModal({ visible, onClose }: AiCopilotModalProps) {
-  const [messages, setMessages] = useState<Message[]>([
+  const firstName = useAuthStore((state) => state.user?.name.split(' ')[0]);
+  const ask = useAskCopilot();
+  const [messages, setMessages] = useState<Message[]>(() => [
     {
       id: 'm1',
       sender: 'AI',
-      text: 'Namaste Aarav! I am your JBIT Campus Copilot. How can I assist you with your academics, attendance, or campus schedule today?',
+      text: `Namaste${firstName ? ` ${firstName}` : ''}! I answer from your own records — attendance, fees, today's classes, upcoming exams and your bus pass.`,
     },
   ]);
   const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const isTyping = ask.isPending;
+  const nextId = useRef(1);
 
   const SUGGESTED_QUERIES = [
     'What is my overall attendance?',
-    'When is my next lab session?',
-    'UTU Sem 6 exam schedule',
-    'Bus 12 departure time',
+    'What classes do I have left today?',
+    'When is my next exam?',
+    'Which bus do I take?',
   ];
 
-  const handleSend = async (text: string) => {
+  const handleSend = (text: string) => {
     if (!text.trim()) return;
 
     const userMsg: Message = {
-      id: 'usr-' + Date.now(),
+      id: `usr-${nextId.current++}`,
       sender: 'USER',
       text: text.trim(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInputText('');
-    setIsTyping(true);
-
-    try {
-      const res = await apiClient.post<any>('/ai/chat', { query: text.trim() });
-      const data = res.data;
-      const replyText =
-        data?.reply ||
-        data?.answer ||
-        data?.data?.reply ||
-        data?.data?.answer ||
-        'I have analyzed your campus academic records and confirmed your inquiry.';
-      const aiReply: Message = {
-        id: 'ai-' + Date.now(),
-        sender: 'AI',
-        text: replyText,
-        meta: data?.groundedData
-          ? {
-              type: data.intent?.includes('ATTENDANCE') ? 'ATTENDANCE' : 'SCHEDULE',
-              stat: data.groundedData.status || 'Verified',
-            }
-          : undefined,
-      };
-      setMessages((prev) => [...prev, aiReply]);
-    } catch (err) {
-      console.error('AI Copilot request failed', err);
-      const aiReply: Message = {
-        id: 'ai-' + Date.now(),
-        sender: 'AI',
-        text: 'Unable to communicate with Campus Copilot server. Please retry.',
-      };
-      setMessages((prev) => [...prev, aiReply]);
-    } finally {
-      setIsTyping(false);
-    }
+    ask.mutate(text.trim(), {
+      onSuccess: (reply) => setMessages((prev) => [...prev, { id: `ai-${nextId.current++}`, sender: 'AI', text: reply.answer }]),
+      onError: (err) => setMessages((prev) => [...prev, { id: `ai-${nextId.current++}`, sender: 'AI', text: getErrorMessage(err) }]),
+    });
   };
 
   return (
@@ -110,7 +91,7 @@ export function AiCopilotModal({ visible, onClose }: AiCopilotModalProps) {
               </View>
               <View>
                 <Text style={styles.title}>JBIT Campus Copilot</Text>
-                <Text style={styles.subtitle}>LLM Academic Assistant • Campus Grounded</Text>
+                <Text style={styles.subtitle}>Answers from your campus records</Text>
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -229,7 +210,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F2F2F7',
   },
   headerBrand: {
     flexDirection: 'row',
@@ -240,23 +221,23 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 8,
-    backgroundColor: '#0284C7',
+    backgroundColor: '#0B6AA8',
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   subtitle: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
   },
   closeBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   messagesList: {
     flex: 1,
@@ -272,9 +253,9 @@ const styles = StyleSheet.create({
     maxWidth: '88%',
   },
   aiBubble: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     alignSelf: 'flex-start',
   },
   userBubble: {
@@ -288,12 +269,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   senderLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   aiLabel: {
-    color: '#0284C7',
+    color: '#0B6AA8',
   },
   userLabel: {
     color: '#93C5FD',
@@ -319,7 +300,7 @@ const styles = StyleSheet.create({
     borderColor: '#A7F3D0',
   },
   statChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#065F46',
   },
@@ -330,7 +311,7 @@ const styles = StyleSheet.create({
   },
   typingText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontStyle: 'italic',
   },
   promptsContainer: {
@@ -340,15 +321,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   promptChip: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: '#D1D1D6',
   },
   promptChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#334155',
     fontWeight: '600',
   },
@@ -358,18 +339,18 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
+    borderTopColor: '#F2F2F7',
   },
   input: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 13,
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   sendBtn: {
     width: 42,
@@ -380,6 +361,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   disabledSend: {
-    backgroundColor: '#94A3B8',
+    backgroundColor: '#737378',
   },
 });

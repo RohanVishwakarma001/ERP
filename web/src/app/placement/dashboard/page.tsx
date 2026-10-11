@@ -1,5 +1,3 @@
-import PlacementDashboardPage from "@/app/admin/placement/page";
+import { PlacementDrivesScreen } from "@/components/screens/placement-drives-screen";
 
-export default function PlacementRoleDashboardPage() {
-  return <PlacementDashboardPage />;
-}
+export default PlacementDrivesScreen;

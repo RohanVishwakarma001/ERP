@@ -1,316 +1,222 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { BellRing, BookOpen, CalendarDays, QrCode, Users } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { facultyService, timetableService, attendanceService } from "@/services/domain-services";
-import { authService } from "@/services/auth.service";
-import { getCampusSocket, disconnectCampusSocket } from "@/services/socket-client";
-import {
-  QrCode,
-  Calendar,
-  CheckCircle2,
-  BookOpen,
-  TrendingUp,
-  X,
-} from "lucide-react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
+import { SectionCard } from "@/components/ui/section-card";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { EmptyState, LoadingState, QueryState } from "@/components/ui/query-state";
+import { IconTile, ListRow } from "@/components/ui/list";
+import { Stat, StatGrid, WelcomePanel } from "@/components/ui/welcome-panel";
+import { useMyFacultyProfile, useMyTodayClasses, type TodayClass } from "@/features/faculty";
+import { useQrBroadcast, type ClassPeriod } from "@/features/attendance";
+import { useNotices } from "@/features/notices";
+import { formatDate, ratio } from "@/lib/format";
+
+const STATUS_VARIANT: Record<TodayClass["status"], BadgeVariant> = { LIVE: "success", UPCOMING: "info", COMPLETED: "neutral" };
+const STATUS_LABEL: Record<TodayClass["status"], string> = { LIVE: "In session", UPCOMING: "Upcoming", COMPLETED: "Completed" };
 
 export default function FacultyDashboardPage() {
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [countdown, setCountdown] = useState(60);
-  const [qrToken, setQrToken] = useState<string | null>(null);
-  const [scannedCount, setScannedCount] = useState(0);
-  const [lastScanner, setLastScanner] = useState<string | null>(null);
-  const rotateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const profile = useMyFacultyProfile();
+  const classes = useMyTodayClasses();
+  const [broadcasting, setBroadcasting] = useState<TodayClass | null>(null);
 
-  const currentUser = authService.getCurrentUser();
-
-  const { data: facultyList = [] } = useQuery({
-    queryKey: ["facultyList"],
-    queryFn: facultyService.getFacultyList,
-  });
-
-  const { data: timetable = [] } = useQuery({
-    queryKey: ["timetable"],
-    queryFn: timetableService.getTimetable,
-  });
-
-  const facultyMember =
-    facultyList.find(
-      (f) =>
-        f.email.toLowerCase() === currentUser?.email?.toLowerCase() ||
-        f.employeeId === currentUser?.employeeId ||
-        f.id === currentUser?.id,
-    ) || facultyList[0];
-
-  const facultyName = facultyMember?.name || currentUser?.name || "Dr. V. K. Bhatt";
-  const departmentName = facultyMember?.department || "Computer Science & Engineering";
-  const designation = facultyMember?.designation || "Professor & Head of Department";
-  const employeeId = facultyMember?.employeeId || currentUser?.employeeId || "FAC-CSE-001";
-  const workloadHours = facultyMember?.weeklyWorkloadHours || 18.0;
-
-  const currentClass = timetable.find((t) => t.periodNumber === 1) || {
-    subjectCode: "CS-601",
-    subjectName: "Compiler Design",
-    roomNumber: "LH-302",
-    batchSection: "CSE-6A",
-    timeSlot: "09:00 AM - 10:00 AM",
-  };
-
-  const section = currentClass.batchSection || "CSE-6A";
-
-  const rotateQrToken = async () => {
-    try {
-      const res = await attendanceService.generateQrSession({
-        subjectCode: currentClass.subjectCode,
-        section,
-        period: 1,
-      });
-      setQrToken(res.qrCodeToken);
-      setCountdown(res.expiresInSeconds || 60);
-    } catch {
-      setQrToken(null);
-    }
-  };
-
-  useEffect(() => {
-    if (!isQrModalOpen) {
-      if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
-      disconnectCampusSocket();
-      return;
-    }
-
-    setScannedCount(0);
-    setLastScanner(null);
-    rotateQrToken();
-
-    const socket = getCampusSocket();
-    socket.emit("join_room", `class_${section}`);
-    socket.on("qr_scan_received", (payload: { scannedCount: number; studentName: string }) => {
-      setScannedCount(payload.scannedCount);
-      setLastScanner(payload.studentName);
-    });
-
-    rotateTimerRef.current = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          rotateQrToken();
-          return 60;
-        }
-        return c - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (rotateTimerRef.current) clearInterval(rotateTimerRef.current);
-      socket.off("qr_scan_received");
-      disconnectCampusSocket();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isQrModalOpen]);
+  const liveClass = classes.data?.find((c) => c.status === "LIVE") ?? null;
+  const pending = classes.data?.filter((c) => c.status !== "COMPLETED").length ?? 0;
+  const f = profile.data;
 
   return (
-    <DashboardLayout role="FACULTY">
-      <div className="flex flex-col gap-6 max-w-5xl mx-auto">
-        {/* Faculty Profile Hero Card matching Stitch Academic Hub */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B3B60] via-[#002541] to-[#00263d] text-white p-6 shadow-md">
-          <div className="relative z-10 flex flex-col space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-white/15 backdrop-blur-md text-xs font-semibold text-sky-200">
-                    AY 2025-26 • Even Sem
-                  </span>
-                  <span className="text-xs text-sky-200 font-semibold">{departmentName}</span>
-                </div>
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-headline">
-                  Good Morning, {facultyName} 👋
-                </h1>
-                <p className="text-xs sm:text-sm text-sky-200 mt-0.5">
-                  {designation} • Himalayan Wing • ID: {employeeId}
-                </p>
-              </div>
+    <DashboardLayout>
+      <div className="flex flex-col gap-6 max-w-6xl mx-auto">
+        {profile.isPending ? (
+          <SectionCard>
+            <LoadingState rows={2} />
+          </SectionCard>
+        ) : f ? (
+          <WelcomePanel eyebrow={f.department} title={`Hello, ${f.name}`} subtitle={`${f.designation} · ${f.employeeId}`}>
+            <StatGrid>
+              <Stat label="Classes today" value={classes.data?.length ?? "—"} />
+              <Stat label="Still to teach" value={classes.isPending ? "—" : pending} />
+              <Stat
+                label="Weekly load"
+                value={`${f.weeklyWorkloadHours}/${f.maxWorkloadHours} h`}
+                note={f.weeklyWorkloadHours < f.maxWorkloadHours ? "Below norm" : "Meets norm"}
+                tone={f.weeklyWorkloadHours < f.maxWorkloadHours ? "warning" : "success"}
+              />
+              <Stat label="Subjects" value={f.assignedSubjects.length} />
+            </StatGrid>
+          </WelcomePanel>
+        ) : (
+          <WelcomePanel title="Faculty console" subtitle="We couldn't load your faculty profile." />
+        )}
 
-              <div className="w-12 h-12 rounded-2xl overflow-hidden bg-white/10 ring-2 ring-white/20 shrink-0">
-                <img
-                  src={facultyMember?.avatarUrl || "/assets/faculty-avatar.png"}
-                  alt={facultyName}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-
-            {/* Quick Metrics Ribbon */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-white/10 text-xs">
-              <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-sky-200 block uppercase font-semibold">Today&apos;s Load</span>
-                  <span className="text-lg font-bold font-tabular-nums">{facultyMember?.assignedSubjects?.length || 3} / 4</span>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-bold text-[10px]">
-                  Active
-                </span>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-sky-200 block uppercase font-semibold">Students</span>
-                  <span className="text-lg font-bold font-tabular-nums">180</span>
-                </div>
-                <span className="text-[10px] text-sky-200">CSE Sections</span>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-sky-200 block uppercase font-semibold">Avg Attendance</span>
-                  <span className="text-lg font-bold font-tabular-nums">84.5%</span>
-                </div>
-                <span className="text-[10px] text-emerald-300 font-bold flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> +1.8%
-                </span>
-              </div>
-
-              <div className="bg-white/10 backdrop-blur-md p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-sky-200 block uppercase font-semibold">Workload Hours</span>
-                  <span className="text-lg font-bold text-sky-200 font-tabular-nums">{workloadHours.toFixed(1)}h</span>
-                </div>
-                <span className="px-1.5 py-0.5 rounded bg-white/10 text-white text-[10px]">AICTE Norm</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CURRENT PERIOD ALERT CARD (Dynamic Focal Component) */}
-        <div className="relative overflow-hidden rounded-2xl bg-white border border-[#E2E8F0] shadow-sm p-6 space-y-4">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 to-amber-500"></div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                Live Classroom Session Active
-              </span>
-            </div>
-            <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-              Period 1 • {currentClass.timeSlot || "09:00 AM - 10:00 AM"}
-            </span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 font-headline">
-                {currentClass.subjectCode}: {currentClass.subjectName}
+        {liveClass && (
+          <section aria-label="Class in session" className="rounded-2xl bg-white border border-emerald-200 shadow-xs p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-sm font-medium text-emerald-800">
+                <span aria-hidden className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" /> In session now · Period {liveClass.period} · {liveClass.time}
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900 font-headline">
+                {liveClass.subjectCode}: {liveClass.subjectName}
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Room {currentClass.roomNumber} • Section {currentClass.batchSection || "CSE-6A"} (60 Enrolled) • Himalayan Wing
+              <p className="text-sm text-slate-500 mt-1">
+                Room {liveClass.room} · Section {liveClass.section} · {liveClass.markedPresent} of {liveClass.totalStudents} marked present
               </p>
             </div>
+            <Button size="lg" icon={<QrCode className="w-5 h-5" />} onClick={() => setBroadcasting(liveClass)}>
+              Take attendance
+            </Button>
+          </section>
+        )}
 
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-semibold shadow-xs flex items-center gap-2 cursor-pointer"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>Broadcast Dynamic QR</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <SectionCard className="lg:col-span-8" title="Today's classes" icon={<CalendarDays className="w-5 h-5" />}>
+            <QueryState query={classes} empty={{ title: "No classes today", icon: <CalendarDays /> }}>
+              {(list) => (
+                <div className="-mx-3">
+                  {list.map((c) => (
+                    <ListRow
+                      key={c.id}
+                      leading={<IconTile tone={c.status === "LIVE" ? "success" : "brand"}>P{c.period}</IconTile>}
+                      title={`${c.subjectCode}: ${c.subjectName}`}
+                      subtitle={
+                        <span className="flex flex-col gap-1.5">
+                          <span>
+                            {c.time} · Room {c.room} · Section {c.section}
+                          </span>
+                          <span className="flex items-center gap-2 max-w-48">
+                            <Users aria-hidden className="w-3.5 h-3.5 shrink-0" />
+                            <span className="font-tabular-nums shrink-0">
+                              {c.markedPresent}/{c.totalStudents}
+                            </span>
+                            <ProgressBar value={ratio(c.markedPresent, c.totalStudents) ?? 0} tone="success" />
+                          </span>
+                        </span>
+                      }
+                      muted={c.status === "COMPLETED"}
+                      highlight={c.status === "LIVE"}
+                      trailing={
+                        <>
+                          <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                          {c.status !== "COMPLETED" && (
+                            <Button size="sm" variant="soft" icon={<QrCode className="w-4 h-4" />} onClick={() => setBroadcasting(c)} aria-label={`Show attendance QR for ${c.subjectCode}`}>
+                              QR
+                            </Button>
+                          )}
+                        </>
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </QueryState>
+          </SectionCard>
 
-        {/* Quick Teaching Modules Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-2xs space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-[#EFF4FF] text-[#0B3B60] flex items-center justify-center">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-sm text-slate-900">Lab Assignment Hub</h3>
-            <p className="text-xs text-slate-500">Review parser implementations and Cloud container submissions.</p>
-            <span className="text-xs text-[#0B3B60] font-semibold block pt-1 hover:underline cursor-pointer">
-              2 Active Assignments
-            </span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-2xs space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-sm text-slate-900">UTU Mark Entry Portal</h3>
-            <p className="text-xs text-slate-500">Continuous internal assessment and practical marks locking to UTU node.</p>
-            <span className="text-xs text-amber-700 font-semibold block pt-1 hover:underline cursor-pointer">
-              Lock by June 2
-            </span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-[#E2E8F0] shadow-2xs space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-sm text-slate-900">Weekly Faculty Schedule</h3>
-            <p className="text-xs text-slate-500">18 Contact Hours compliant with AICTE statutory guidelines.</p>
-            <span className="text-xs text-emerald-700 font-semibold block pt-1 hover:underline cursor-pointer">
-              100% Conflict Free
-            </span>
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <SectionCard title="Assigned subjects" icon={<BookOpen className="w-5 h-5" />}>
+              {!f ? (
+                <LoadingState rows={2} />
+              ) : f.assignedSubjects.length === 0 ? (
+                <EmptyState compact title="No subjects assigned" />
+              ) : (
+                <ul className="space-y-2">
+                  {f.assignedSubjects.map((s) => (
+                    <li key={`${s.code}-${s.section}`} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0">
+                        <span className="font-medium text-slate-900 block truncate">{s.name}</span>
+                        <span className="text-xs text-slate-500">{s.code}</span>
+                      </span>
+                      <Badge variant="neutral">{s.section}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+            <FacultyNotices />
           </div>
         </div>
       </div>
 
-      {/* Dynamic QR Broadcasting Modal matching Stitch Hub */}
-      {isQrModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-[#CBD5E1] shadow-2xl max-w-sm w-full p-6 text-center animate-in fade-in zoom-in-95 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-[#E2E8F0]">
-              <h3 className="text-sm font-bold text-slate-900 font-headline uppercase tracking-wider">
-                Dynamic Class QR Code
-              </h3>
-              <button onClick={() => setIsQrModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-700">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Keyed per class so each broadcast starts with a fresh scan tally. */}
+      <QrBroadcastModal key={broadcasting?.id ?? "closed"} classInfo={broadcasting} onClose={() => setBroadcasting(null)} />
+    </DashboardLayout>
+  );
+}
 
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center">
-              <div className="w-48 h-48 bg-white p-3 rounded-xl border border-slate-300 shadow-sm flex items-center justify-center">
-                {qrToken ? (
-                  <QRCodeSVG value={qrToken} size={160} />
-                ) : (
-                  <QrCode className="w-40 h-40 text-slate-300 animate-pulse" />
-                )}
-              </div>
-              <p className="mt-3 text-xs font-semibold text-slate-700">
-                {currentClass.subjectCode} • Period 1 • Room {currentClass.roomNumber}
-              </p>
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                <span>Rotating in</span>
-                <span className="font-bold text-red-600 font-tabular-nums">{countdown}s</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-slate-200 w-full text-center">
-                <span className="text-2xl font-bold text-emerald-600 font-tabular-nums">{scannedCount}</span>
-                <span className="text-xs text-slate-500"> students scanned live</span>
-                {lastScanner && (
-                  <p className="text-[11px] text-slate-400 mt-0.5">Last: {lastScanner}</p>
-                )}
-              </div>
-            </div>
+function FacultyNotices() {
+  const notices = useNotices();
+  return (
+    <SectionCard title="Notices" icon={<BellRing className="w-5 h-5" />}>
+      <QueryState query={notices} empty={{ title: "No notices right now", icon: <BellRing /> }}>
+        {(list) => (
+          <ul className="divide-y divide-border-subtle -mt-1">
+            {list.slice(0, 3).map((n) => (
+              <li key={n.id} className="py-3 first:pt-1">
+                <p className="text-sm font-medium text-slate-900">
+                  {n.isUrgent && <span className="text-red-700 font-semibold">Urgent · </span>}
+                  {n.title}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">{formatDate(n.publishedAt)}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </QueryState>
+    </SectionCard>
+  );
+}
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsQrModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-semibold shadow-xs cursor-pointer"
-              >
-                Finish & Close ({scannedCount} Present)
-              </button>
-            </div>
+function QrBroadcastModal({ classInfo, onClose }: { classInfo: TodayClass | null; onClose: () => void }) {
+  const period = useMemo<ClassPeriod | null>(
+    () => (classInfo ? { subjectCode: classInfo.subjectCode, section: classInfo.section, period: classInfo.period } : null),
+    [classInfo],
+  );
+  const { token, secondsLeft, scannedCount, lastScanner, error } = useQrBroadcast(period, classInfo !== null);
+
+  return (
+    <Modal
+      open={classInfo !== null}
+      onClose={onClose}
+      title="Attendance QR"
+      description={classInfo ? `${classInfo.subjectCode} · Period ${classInfo.period} · Room ${classInfo.room}` : undefined}
+      size="sm"
+      footer={
+        <Button className="w-full sm:w-auto" onClick={onClose}>
+          Done
+        </Button>
+      }
+    >
+      {classInfo && (
+        <div className="text-center space-y-4">
+          <div className="mx-auto w-56 h-56 bg-white p-3 rounded-2xl border border-border-subtle flex items-center justify-center">
+            {token ? (
+              <QRCodeSVG value={token} size={200} title="Attendance QR code" />
+            ) : (
+              <QrCode aria-label="Generating QR code" className="w-24 h-24 text-slate-300 animate-pulse" />
+            )}
+          </div>
+          {error ? (
+            <p role="alert" className="text-sm text-red-700">
+              {error}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-500" aria-live="off">
+              New code in <span className="font-semibold text-slate-900 font-tabular-nums">{secondsLeft}s</span>
+            </p>
+          )}
+          <div className="pt-4 border-t border-border-subtle" aria-live="polite">
+            <p>
+              <span className="text-3xl font-semibold text-emerald-700 font-tabular-nums">{scannedCount}</span>
+              <span className="text-sm text-slate-500"> scanned this session</span>
+            </p>
+            {lastScanner && <p className="text-xs text-slate-500 mt-1">Latest: {lastScanner}</p>}
           </div>
         </div>
       )}
-    </DashboardLayout>
+    </Modal>
   );
 }

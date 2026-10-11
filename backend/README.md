@@ -147,18 +147,20 @@ When the server runs, interactive documentation with pre-configured request payl
 
 The API enforces strict multi-role authentication. 10 institutional roles are supported:
 
-| Role | Default Demo Identifier | Password | Access Capabilities |
+| Role | Demo Identifier | Password | Access Capabilities |
 |---|---|---|---|
-| `SUPER_ADMIN` / `ADMIN` | `registrar@jbitdoon.edu.in` | `Jbit@2026` | Universal institutional administration |
-| `HOD` | `hod.cse@jbitdoon.edu.in` | `Jbit@2026` | Department oversight, faculty load, leave approval |
-| `FACULTY` | `FAC-CSE-001` | `Jbit@2026` | Classes, rotating QR generation, marks entry |
-| `STUDENT` | `220102048` | `Jbit@2026` | Attendance, QR scanner, grade cards, fee ledger |
-| `ACCOUNTANT` | `finance@jbitdoon.edu.in` | `Jbit@2026` | Fee structure, payment reconciliation, receipts |
-| `EXAM_OFFICER` | `coe@jbitdoon.edu.in` | `Jbit@2026` | Seating matrix, mark locking, result publishing |
-| `PLACEMENT_OFFICER` | `tpo@jbitdoon.edu.in` | `Jbit@2026` | Recruiter scoring, drive eligibility, LOI signing |
-| `HOSTEL_WARDEN` | `warden@jbitdoon.edu.in` | `Jbit@2026` | Bed allocations, outpass approvals |
-| `TRANSPORT_MANAGER` | `transport@jbitdoon.edu.in` | `Jbit@2026` | Fleet GPS tracking, Route 12 passes |
-| `LIBRARIAN` | `library@jbitdoon.edu.in` | `Jbit@2026` | RFID book checkouts, inventory, overdue fines |
+| `SUPER_ADMIN` / `ADMIN` | `registrar@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Universal institutional administration |
+| `HOD` | `hod.cse@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Department oversight, faculty load, leave approval |
+| `FACULTY` | `FAC-CSE-001` | `$SEED_DEFAULT_PASSWORD` | Classes, rotating QR generation, marks entry |
+| `STUDENT` | `220102048` | `$SEED_DEFAULT_PASSWORD` | Attendance, QR scanner, grade cards, fee ledger |
+| `ACCOUNTANT` | `finance@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Fee structure, payment reconciliation, receipts |
+| `EXAM_OFFICER` | `coe@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Seating matrix, mark locking, result publishing |
+| `PLACEMENT_OFFICER` | `tpo@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Recruiter scoring, drive eligibility, LOI signing |
+| `HOSTEL_WARDEN` | `warden@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Bed allocations, outpass approvals |
+| `TRANSPORT_MANAGER` | `transport@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Fleet GPS tracking, Route 12 passes |
+| `LIBRARIAN` | `library@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | RFID book checkouts, inventory, overdue fines |
+
+Demo accounts exist only after running the seed script, and all share the password you set in `SEED_DEFAULT_PASSWORD` — there is no built-in default. Never seed a production database.
 
 ---
 

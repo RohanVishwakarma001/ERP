@@ -1,67 +1,62 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 import { ExaminationsService } from './examinations.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators';
+import { CurrentStudentId, Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
+import { GenerateSeatingDto, RecordMarksDto } from './dto/examinations.dto';
 
 @ApiTags('Examinations & Seating Matrix')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('exams')
 export class ExaminationsController {
   constructor(private readonly examsService: ExaminationsService) {}
 
   @Get('schedule')
-  @ApiOperation({ summary: 'Get UTU examination schedule' })
-  async getSchedule() {
+  @ApiOperation({ summary: 'Examination timetable (papers, dates, rooms)' })
+  getSchedule() {
     return this.examsService.getSchedule();
   }
 
   @Get('cycles')
-  @ApiOperation({ summary: 'Get institutional examination cycles' })
-  async getCycles() {
+  @ApiOperation({ summary: 'Examination cycles with date range and hall counts' })
+  getCycles() {
     return this.examsService.getCycles();
   }
 
   @Get('seating')
-  @ApiOperation({ summary: 'Get examination seating hall allocations' })
-  async getSeating() {
+  @Roles(...RoleGroups.EXAM_CONTROL, UserRole.FACULTY)
+  @ApiOperation({ summary: 'Hall allocations with candidate counts and invigilators' })
+  getSeating() {
     return this.examsService.getSeatingHalls();
   }
 
-  @Get('grade-card')
-  @ApiOperation({ summary: 'Student: Get academic grade card with SGPA/CGPA' })
-  async getGradeCardWeb(@CurrentUser() user: any) {
-    return this.examsService.getStudentGradeCard(user.studentId);
-  }
-
   @Post('seating-matrix/generate')
-  @ApiOperation({ summary: 'COE: Generate anti-cheating randomized seating arrangement' })
-  async generateSeating(@Body() body: any) {
-    return this.examsService.generateSeatingMatrix(body);
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: seat eligible candidates for a paper into a room, interleaving departments' })
+  generateSeating(@Body() dto: GenerateSeatingDto) {
+    return this.examsService.generateSeatingMatrix(dto);
   }
 
-  @Get('grades/me')
-  @ApiOperation({ summary: 'Student: Get semester grade card with SGPA and DigiLocker status' })
-  async getMyGradeCard(@CurrentUser() user: any) {
-    return this.examsService.getStudentGradeCard(user.studentId);
+  @Post('marks')
+  @Roles(...RoleGroups.TEACHING_STAFF, UserRole.EXAM_OFFICER)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Faculty/COE: record marks for one assessment of a subject' })
+  recordMarks(@Body() dto: RecordMarksDto) {
+    return this.examsService.recordMarks(dto);
   }
 
-  @Get('grades/:studentId')
-  @ApiOperation({ summary: 'Get semester grade card for specific student' })
-  async getGradeCard(@Param('studentId') studentId: string) {
+  @Get('grade-card')
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student: own grade card with SGPA/CGPA' })
+  getMyGradeCard(@CurrentStudentId() studentId: string) {
     return this.examsService.getStudentGradeCard(studentId);
   }
 
-  @Post('marks/lock')
-  @ApiOperation({ summary: 'Faculty/COE: Lock internal and practical marks to UTU node' })
-  async lockMarks(@Body() body: any) {
-    return this.examsService.lockMarks(body);
-  }
-
-  @Post('lock-marks')
-  @ApiOperation({ summary: 'Faculty/COE: Cryptographically lock marks to UTU node' })
-  async lockMarksAlias(@Body() body: any) {
-    return this.examsService.lockMarks(body);
+  @Get('grades/:studentId')
+  @Roles(...RoleGroups.EXAM_CONTROL, UserRole.FACULTY)
+  @ApiOperation({ summary: 'Grade card for a specific student' })
+  getGradeCard(@Param('studentId') studentId: string) {
+    return this.examsService.getStudentGradeCard(studentId);
   }
 }

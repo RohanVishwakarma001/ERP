@@ -1,238 +1,101 @@
 "use client";
 
-import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
-import {
-  LayoutDashboard,
-  Building2,
-  GraduationCap,
-  Users2,
-  CalendarDays,
-  CalendarCheck2,
-  Briefcase,
-  Award,
-  Wallet,
-  BookOpen,
-  Bed,
-  Bus,
-  BellRing,
-  HelpCircle,
-  Bot,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { clsx } from "clsx";
-import { UserRole } from "@/types";
+import type { UserRole } from "@/types";
+import { navigationFor, type NavItem } from "@/config/navigation";
+import { ROLES_CONFIG } from "@/lib/auth/roles";
+import { BrandMark } from "./brand-mark";
 
 interface SidebarProps {
-  currentRole?: UserRole;
+  role: UserRole;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  /** Rendered inside the mobile drawer: shows a close button instead of collapse. */
+  variant?: "desktop" | "drawer";
 }
 
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ReactNode;
-  badge?: string;
-  badgeColor?: string;
+function isActive(item: NavItem, pathname: string) {
+  return pathname === item.href || (!item.href.endsWith("/dashboard") && pathname.startsWith(`${item.href}/`));
 }
 
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
-// Every href below must correspond to a page that actually exists — no aspirational
-// links. Non-admin roles only see their own dashboard plus the specific admin
-// sub-pages their role is actually permitted into (see lib/roles.ts allowedPrefixes).
-function buildNavSections(currentRole: UserRole): NavSection[] {
-  if (currentRole === "ADMIN") {
-    return [
-      {
-        title: "Main",
-        items: [
-          { label: "Overview / Dashboard", href: "/admin/dashboard", icon: <LayoutDashboard className="w-[18px] h-[18px]" /> },
-        ],
-      },
-      {
-        title: "Academic Affairs",
-        items: [
-          { label: "Departments", href: "/admin/departments", icon: <Building2 className="w-[18px] h-[18px]" /> },
-          { label: "Programs & Courses", href: "/admin/courses", icon: <GraduationCap className="w-[18px] h-[18px]" /> },
-          { label: "Faculty Workload", href: "/admin/faculty", icon: <Users2 className="w-[18px] h-[18px]" /> },
-          { label: "Student Roster", href: "/admin/students", icon: <Users2 className="w-[18px] h-[18px]" /> },
-          { label: "TPC Placement Drive", href: "/admin/placement", icon: <Briefcase className="w-[18px] h-[18px]" /> },
-          { label: "Recruiter Scoring & LOI", href: "/admin/recruiter", icon: <Award className="w-[18px] h-[18px]" /> },
-        ],
-      },
-      {
-        title: "Scheduling & Operations",
-        items: [
-          { label: "Timetable Engine", href: "/admin/timetable", icon: <CalendarDays className="w-[18px] h-[18px]" /> },
-          { label: "Exam Seating & COE", href: "/admin/exams", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> },
-        ],
-      },
-      {
-        title: "Campus Infrastructure",
-        items: [
-          { label: "Fee Ledger & Accounts", href: "/admin/fees", icon: <Wallet className="w-[18px] h-[18px]" /> },
-          { label: "Central Library", href: "/admin/library", icon: <BookOpen className="w-[18px] h-[18px]" /> },
-          { label: "Hostels & Outpass", href: "/admin/hostel", icon: <Bed className="w-[18px] h-[18px]" /> },
-          { label: "Fleet & Transport", href: "/admin/transport", icon: <Bus className="w-[18px] h-[18px]" /> },
-          { label: "Campus Notices", href: "/admin/notices", icon: <BellRing className="w-[18px] h-[18px]" /> },
-          { label: "Grievances & Tickets", href: "/admin/complaints", icon: <HelpCircle className="w-[18px] h-[18px]" /> },
-        ],
-      },
-      {
-        title: "System & AI",
-        items: [
-          { label: "AI Campus Copilot", href: "/admin/ai-copilot", icon: <Bot className="w-[18px] h-[18px] text-cyan-600" />, badge: "Smart", badgeColor: "bg-cyan-600 text-white" },
-        ],
-      },
-    ];
-  }
-
-  const dashboardHref = `/${currentRole.toLowerCase()}/dashboard`;
-  const main: NavSection = {
-    title: "Main",
-    items: [{ label: "Overview / Dashboard", href: dashboardHref, icon: <LayoutDashboard className="w-[18px] h-[18px]" /> }],
-  };
-
-  const roleExtras: Partial<Record<UserRole, NavItem[]>> = {
-    HOD: [
-      { label: "Departments", href: "/admin/departments", icon: <Building2 className="w-[18px] h-[18px]" /> },
-      { label: "Faculty Workload", href: "/admin/faculty", icon: <Users2 className="w-[18px] h-[18px]" /> },
-    ],
-    ACCOUNTANT: [{ label: "Fee Ledger & Accounts", href: "/admin/fees", icon: <Wallet className="w-[18px] h-[18px]" /> }],
-    EXAM_OFFICER: [{ label: "Exam Seating & COE", href: "/admin/exams", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> }],
-    LIBRARIAN: [{ label: "Central Library", href: "/admin/library", icon: <BookOpen className="w-[18px] h-[18px]" /> }],
-    PLACEMENT_OFFICER: [{ label: "TPC Placement Drive", href: "/admin/placement", icon: <Briefcase className="w-[18px] h-[18px]" /> }],
-    HOSTEL_WARDEN: [{ label: "Hostels & Outpass", href: "/admin/hostel", icon: <Bed className="w-[18px] h-[18px]" /> }],
-    TRANSPORT_MANAGER: [{ label: "Fleet & Transport", href: "/admin/transport", icon: <Bus className="w-[18px] h-[18px]" /> }],
-    STUDENT: [
-      { label: "Attendance", href: "/student/attendance", icon: <CalendarCheck2 className="w-[18px] h-[18px]" /> },
-      { label: "Fee Ledger", href: "/student/fees", icon: <Wallet className="w-[18px] h-[18px]" /> },
-    ],
-  };
-
-  const extras = roleExtras[currentRole];
-  return extras ? [main, { title: "Access", items: extras }] : [main];
-}
-
-export function Sidebar({ currentRole = "ADMIN", isCollapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ role, isCollapsed, onToggleCollapse, variant = "desktop" }: SidebarProps) {
   const pathname = usePathname();
-  const navSections = buildNavSections(currentRole);
+  const sections = navigationFor(role);
+  const collapsed = variant === "desktop" && isCollapsed;
 
   return (
     <aside
+      aria-label="Main navigation"
       className={clsx(
-        "fixed left-0 top-0 h-full bg-white z-50 flex flex-col border-r border-[#E2E8F0] shadow-sm select-none transition-all duration-300",
-        isCollapsed ? "w-16" : "w-64"
+        "h-full bg-white flex flex-col border-r border-border-subtle select-none",
+        variant === "desktop" && "fixed left-0 top-0 z-40 transition-[width] duration-200",
+        variant === "desktop" && (collapsed ? "w-[72px]" : "w-64"),
+        variant === "drawer" && "w-full",
       )}
     >
-      {/* Top Header */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-[#F1F5F9]">
-        {!isCollapsed && (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#0B3B60] flex items-center justify-center text-white shrink-0 font-bold text-base shadow-xs">
-              J
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold text-sm text-slate-900 tracking-tight truncate leading-tight font-headline">
-                JBIT ERP
-              </span>
-              <span className="text-[10px] uppercase tracking-wider text-[#0B3B60] font-bold leading-none mt-0.5">
-                Admin Console
-              </span>
-            </div>
-          </div>
+      <div className={clsx("h-16 px-4 flex items-center border-b border-border-subtle shrink-0", collapsed ? "justify-center" : "justify-between gap-2")}>
+        {!collapsed && (
+          <Link href={ROLES_CONFIG[role].defaultPath} className="flex items-center gap-2.5 min-w-0 rounded-lg">
+            <BrandMark size={34} />
+            <span className="flex flex-col min-w-0">
+              <span className="font-semibold text-[15px] text-slate-900 tracking-tight truncate leading-tight font-headline">JBIT Campus ERP</span>
+              <span className="text-xs text-slate-500 truncate leading-tight">{ROLES_CONFIG[role].label}</span>
+            </span>
+          </Link>
         )}
-
-        {isCollapsed && (
-          <div className="w-full flex justify-center">
-            <div className="w-8 h-8 rounded-lg bg-[#0B3B60] flex items-center justify-center text-white font-bold text-base shadow-xs">
-              J
-            </div>
-          </div>
-        )}
-
         <button
-          onClick={onToggleCollapse}
-          className="text-slate-400 hover:text-slate-700 hover:bg-slate-100 p-1.5 rounded-lg transition-colors flex items-center justify-center"
-          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           type="button"
+          onClick={onToggleCollapse}
+          aria-label={variant === "drawer" ? "Close navigation menu" : collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={variant === "desktop" ? !collapsed : undefined}
+          className="w-9 h-9 inline-flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors shrink-0"
         >
-          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          {variant === "drawer" ? <X className="w-5 h-5" /> : collapsed ? <PanelLeftOpen className="w-[18px] h-[18px]" /> : <PanelLeftClose className="w-[18px] h-[18px]" />}
         </button>
       </div>
 
-      {/* Nav List */}
-      <div className="overflow-y-auto flex-1 px-2.5 py-3 space-y-4 no-scrollbar">
-        {navSections.map((section, sIdx) => (
-          <div key={sIdx} className="space-y-1">
-            {!isCollapsed && (
-              <div className="px-2 pb-1">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                  {section.title}
-                </span>
-              </div>
+      <nav className="overflow-y-auto flex-1 px-3 py-4 space-y-5">
+        {sections.map((section) => (
+          <div key={section.title}>
+            {collapsed ? (
+              <div className="mx-3 mb-2 h-px bg-border-subtle first:hidden" aria-hidden />
+            ) : (
+              <h2 className="px-3 pb-1.5 text-xs font-medium text-slate-500">{section.title}</h2>
             )}
-            {section.items.map((item, iIdx) => {
-              const isActive = pathname === item.href || (item.href !== "/admin/dashboard" && pathname.startsWith(item.href));
-              return (
-                <Link
-                  key={iIdx}
-                  href={item.href}
-                  title={isCollapsed ? item.label : undefined}
-                  className={clsx(
-                    "flex items-center gap-3 px-2.5 py-2 rounded-lg text-xs font-medium transition-all group",
-                    isActive
-                      ? "bg-[#0B3B60] text-white font-semibold shadow-xs"
-                      : "text-slate-600 hover:bg-[#F1F5F9] hover:text-slate-900",
-                    isCollapsed && "justify-center px-0"
-                  )}
-                >
-                  <span className={clsx("shrink-0", isActive ? "text-white" : "text-slate-500 group-hover:text-slate-800")}>
-                    {item.icon}
-                  </span>
-                  {!isCollapsed && (
-                    <span className="truncate flex-1 text-left">{item.label}</span>
-                  )}
-                  {!isCollapsed && item.badge && (
-                    <span
+            <ul className="space-y-0.5">
+              {section.items.map((item) => {
+                const active = isActive(item, pathname);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      aria-label={collapsed ? item.label : undefined}
+                      title={collapsed ? item.label : undefined}
                       className={clsx(
-                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase leading-none",
-                        item.badgeColor || (isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600")
+                        "flex items-center gap-3 h-10 px-3 rounded-xl text-sm transition-colors",
+                        active ? "bg-surface-container-low text-primary-container font-semibold" : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium",
+                        collapsed && "justify-center px-0",
                       )}
                     >
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+                      <span aria-hidden className={clsx("shrink-0", active ? "text-primary-container" : "text-slate-500")}>
+                        {item.icon}
+                      </span>
+                      {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+                      {!collapsed && item.badge && (
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md leading-none bg-primary-container text-white">{item.badge}</span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ))}
-      </div>
-
-      {/* Footer Node Pill */}
-      {!isCollapsed && (
-        <div className="p-3 bg-[#F8FAFC] border-t border-[#E2E8F0] m-2 rounded-xl flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <div className="flex flex-col min-w-0">
-              <span className="text-[11px] font-semibold text-slate-800 leading-none">UTU Cloud Node</span>
-              <span className="text-[9px] text-slate-400 leading-tight mt-0.5">Node 04 • v2.6.4</span>
-            </div>
-          </div>
-          <span className="text-[9px] bg-white px-1.5 py-0.5 rounded border border-[#E2E8F0] text-slate-500 font-mono font-bold">
-            STABLE
-          </span>
-        </div>
-      )}
+      </nav>
     </aside>
   );
 }

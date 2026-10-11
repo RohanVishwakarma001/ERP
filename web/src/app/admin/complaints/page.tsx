@@ -1,140 +1,102 @@
 "use client";
 
-import React, { useState } from "react";
+import { AlertTriangle, CheckCircle2, Clock, HelpCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KpiCard } from "@/components/ui/kpi-card";
-import { Badge } from "@/components/ui/badge";
-import { DataTable, Column } from "@/components/ui/data-table";
-import { useQuery } from "@tanstack/react-query";
-import { operationsService } from "@/services/domain-services";
-import { ComplaintTicket } from "@/types";
-import { HelpCircle, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { ErrorState } from "@/components/ui/query-state";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { useComplaints, type Complaint } from "@/features/campus";
+import { formatDate, formatPercent, ratio } from "@/lib/format";
+
+const STATUS_VARIANT: Record<Complaint["status"], BadgeVariant> = {
+  OPEN: "error",
+  ASSIGNED: "info",
+  IN_PROGRESS: "warning",
+  RESOLVED: "success",
+  CLOSED: "neutral",
+};
+
+const columns: Column<Complaint>[] = [
+  {
+    header: "Ticket",
+    accessorKey: "title",
+    sortable: true,
+    cell: (t) => (
+      <div>
+        <span className="font-semibold text-slate-900 text-xs block leading-tight">{t.title}</span>
+        <span className="text-xs text-slate-500 font-mono">
+          {t.ticketNumber} · {t.reportedBy}
+        </span>
+      </div>
+    ),
+  },
+  {
+    header: "Category",
+    accessorKey: "category",
+    sortable: true,
+    cell: (t) => <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">{t.category}</span>,
+  },
+  {
+    header: "Priority",
+    accessorKey: "priority",
+    sortable: true,
+    cell: (t) => <Badge variant={t.priority === "URGENT" || t.priority === "HIGH" ? "error" : "neutral"}>{t.priority}</Badge>,
+  },
+  {
+    header: "Filed",
+    accessorKey: "createdAt",
+    sortable: true,
+    cell: (t) => <span className="text-xs text-slate-500">{formatDate(t.createdAt)}</span>,
+  },
+  {
+    header: "Status",
+    accessorKey: "status",
+    sortable: true,
+    cell: (t) => <Badge variant={STATUS_VARIANT[t.status]}>{t.status.replace("_", " ")}</Badge>,
+  },
+];
 
 export default function ComplaintsPage() {
-  const { data: complaints = [], isLoading } = useQuery({
-    queryKey: ["complaints"],
-    queryFn: operationsService.getComplaints,
-  });
-
-  const totalTickets = complaints.length;
-  const inProgress = complaints.filter((c) => c.status === "IN_PROGRESS").length;
-  const resolved = complaints.filter((c) => c.status === "RESOLVED").length;
-  const pending = complaints.filter((c) => c.status === "OPEN" || c.status === "ASSIGNED").length;
-
-  const columns: Column<ComplaintTicket>[] = [
-    {
-      header: "Ticket # & Title",
-      accessorKey: "title",
-      sortable: true,
-      cell: (t) => (
-        <div>
-          <span className="font-bold text-slate-900 text-xs block leading-tight">{t.title}</span>
-          <span className="text-[11px] text-slate-500 font-mono">{t.ticketNumber} • {t.reportedBy} ({t.reportedByRole})</span>
-        </div>
-      ),
-    },
-    {
-      header: "Category",
-      accessorKey: "category",
-      sortable: true,
-      cell: (t) => (
-        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
-          {t.category}
-        </span>
-      ),
-    },
-    {
-      header: "Assigned Specialist",
-      accessorKey: "assignedTo",
-      cell: (t) => <span className="text-xs text-slate-700">{t.assignedTo || "Unassigned"}</span>,
-    },
-    {
-      header: "Created Date",
-      accessorKey: "createdAt",
-      sortable: true,
-      cell: (t) => <span className="text-xs text-slate-500">{t.createdAt}</span>,
-    },
-    {
-      header: "Status",
-      accessorKey: "status",
-      sortable: true,
-      cell: (t) => (
-        <Badge
-          variant={t.status === "RESOLVED" ? "success" : t.status === "IN_PROGRESS" ? "warning" : "error"}
-          pulse={t.status === "IN_PROGRESS"}
-        >
-          {t.status}
-        </Badge>
-      ),
-    },
-  ];
+  const complaints = useComplaints();
+  const list = complaints.data ?? [];
+  const count = (...statuses: Complaint["status"][]) => list.filter((c) => statuses.includes(c.status)).length;
+  const resolved = count("RESOLVED", "CLOSED");
 
   return (
-    <DashboardLayout role="ADMIN">
+    <DashboardLayout>
       <div className="flex flex-col gap-6">
-        <div>
-          <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
-            <span>Student Affairs</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-[#0B3B60]">Grievance Desk</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-headline mt-1">
-            Student &amp; Faculty Grievance Ticketing Desk
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Omnichannel complaint resolution pipeline: Hostel amenities, laboratory hardware, transport schedules, and academic petitions.
-          </p>
-        </div>
+        <PageHeader
+          breadcrumbs={["Student Affairs", "Grievances"]}
+          title="Grievance Desk"
+          description="Complaints raised by students about hostel, academics, transport, infrastructure and finance."
+        />
 
-        {/* 4 Grievance KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
             title="Total Tickets"
-            value={totalTickets.toString()}
-            unit="Filed"
-            icon={<HelpCircle className="w-5 h-5 text-[#0B3B60]" />}
-            footerLeft="Active Grievances"
-            footerRight={`${totalTickets > 0 ? ((resolved / totalTickets) * 100).toFixed(0) : 100}% Resolution Rate`}
-            footerRightColor="success"
+            value={list.length}
+            icon={<HelpCircle className="w-5 h-5" />}
+            footerLeft={`${formatPercent(ratio(resolved, list.length), 0)} resolved`}
           />
-          <KpiCard
-            title="In Progress"
-            value={inProgress.toString()}
-            unit="Active"
-            icon={<Clock className="w-5 h-5 text-amber-600" />}
-            footerLeft="Assigned to Specialists"
-            footerRight="SLA < 24h"
-            footerRightColor="warning"
-          />
-          <KpiCard
-            title="Resolved Tickets"
-            value={resolved.toString()}
-            unit="Closed"
-            icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-            footerLeft="Action Completed"
-            footerRight="Verified"
-            footerRightColor="success"
-          />
-          <KpiCard
-            title="Pending Intake"
-            value={pending.toString()}
-            unit="New"
-            icon={<AlertTriangle className="w-5 h-5 text-indigo-600" />}
-            footerLeft="Student & Faculty Desk"
-            footerRight="Queue Active"
-            footerRightColor="info"
-          />
+          <KpiCard title="Open" value={count("OPEN")} icon={<AlertTriangle className="w-5 h-5 text-red-700" />} />
+          <KpiCard title="In Progress" value={count("ASSIGNED", "IN_PROGRESS")} icon={<Clock className="w-5 h-5 text-amber-700" />} />
+          <KpiCard title="Resolved" value={resolved} icon={<CheckCircle2 className="w-5 h-5 text-emerald-700" />} />
         </div>
 
-        <DataTable
-          data={complaints}
-          columns={columns}
-          searchPlaceholder="Search ticket title, category, or student..."
-          searchKey="title"
-          pageSize={10}
-          isLoading={isLoading}
-          exportFileName="jbit-grievances"
-        />
+        {complaints.isError ? (
+          <ErrorState error={complaints.error} onRetry={() => complaints.refetch()} />
+        ) : (
+          <DataTable
+            data={list}
+            columns={columns}
+            searchPlaceholder="Search tickets…"
+            pageSize={10}
+            isLoading={complaints.isPending}
+            exportFileName="jbit-grievances"
+          />
+        )}
       </div>
     </DashboardLayout>
   );

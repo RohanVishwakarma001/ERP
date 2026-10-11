@@ -1,43 +1,40 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { TimetableService } from './timetable.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators';
+import { CurrentUser, Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+import { CheckConflictDto, TimetableQueryDto } from './dto/timetable.dto';
 
 @ApiTags('Timetable Engine')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('timetable')
 export class TimetableController {
   constructor(private readonly timetableService: TimetableService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get timetable slots with filters for day, section, and faculty' })
-  async findAll(@Query() query: any) {
+  @ApiOperation({ summary: 'Timetable slots, filterable by day, section and faculty' })
+  findAll(@Query() query: TimetableQueryDto) {
     return this.timetableService.findAll(query);
   }
 
   @Get('my')
-  @ApiOperation({ summary: 'Get timetable personalized for logged-in student or faculty' })
-  async getMySchedule(@CurrentUser() user: any) {
-    return this.timetableService.getMySchedule(user.role, user.id);
-  }
-
-  @Post('lock')
-  @ApiOperation({ summary: 'Lock timetable matrix and synchronize with UTU state' })
-  async lockTimetable() {
-    return this.timetableService.lockAndPublish();
+  @ApiOperation({ summary: "Caller's weekly timetable (student: own section; faculty: own classes)" })
+  getMySchedule(@CurrentUser() user: AuthUser) {
+    return this.timetableService.getMySchedule(user);
   }
 
   @Get('today')
-  @ApiOperation({ summary: 'Get current day schedule slots for mobile/web' })
-  async getToday() {
-    return this.timetableService.getTodayStudentSchedule();
+  @ApiOperation({ summary: "Caller's slots for today with live status, in campus time" })
+  getToday(@CurrentUser() user: AuthUser) {
+    return this.timetableService.getToday(user);
   }
 
   @Post('check-conflict')
-  @ApiOperation({ summary: 'Verify room, faculty, and section availability before booking slot' })
-  async checkConflict(@Body() body: any) {
-    return this.timetableService.checkConflicts(body);
+  @Roles(...RoleGroups.ACADEMIC_LEADERSHIP)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check room, faculty and section availability for a slot (409 on clash)' })
+  checkConflict(@Body() dto: CheckConflictDto) {
+    return this.timetableService.checkConflicts(dto);
   }
 }

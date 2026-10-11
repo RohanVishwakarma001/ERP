@@ -1,11 +1,24 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ArrayMaxSize, IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { EventsService } from './events.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+
+export class RegisterTeamDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  teamName: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  members?: string[];
+}
 
 @ApiTags('Campus Events & Clubs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('events')
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
@@ -18,7 +31,7 @@ export class EventsController {
 
   @Post(':id/register')
   @ApiOperation({ summary: 'Register team for event' })
-  async register(@Param('id') id: string, @Body() body: any) {
+  async register(@Param('id') id: string, @Body() body: RegisterTeamDto) {
     return this.eventsService.registerTeam(id, body);
   }
 }

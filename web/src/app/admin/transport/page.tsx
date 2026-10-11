@@ -1,5 +1,3 @@
-import TransportDashboardPage from "@/app/transport/dashboard/page";
+import { TransportScreen } from "@/components/screens/transport-screen";
 
-export default function AdminTransportPage() {
-  return <TransportDashboardPage />;
-}
+export default TransportScreen;

@@ -1,278 +1,105 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { CreateDepartmentDto } from './dto/departments.dto';
 
-const MOCK_DEPARTMENTS = [
-  {
-    id: 'dept-cse',
-    code: 'CSE',
-    name: 'Computer Science & Engineering',
-    hodName: 'Dr. V. K. Bhatt',
-    hodEmail: 'hod.cse@jbitdoon.edu.in',
-    building: 'Block B (Himalayan Wing)',
-    facultyCount: 32,
-    studentCount: 480,
-    fsrRatio: '1:15.0',
-    accreditationStatus: 'NBA Tier-1',
-    intakeCapacity: 180,
-    nbaAccredited: true,
-    budgetAllocated: 4500000,
-    budgetSpent: 3120000,
-    budgetUtilization: 69,
-    averageAttendance: 84.5,
-    programs: ['B.Tech CSE', 'BCA'],
-  },
-  {
-    id: 'dept-ece',
-    code: 'ECE',
-    name: 'Electronics & Communication Engineering',
-    hodName: 'Dr. R. K. Joshi',
-    hodEmail: 'hod.ece@jbitdoon.edu.in',
-    building: 'Block A',
-    facultyCount: 22,
-    studentCount: 280,
-    fsrRatio: '1:12.7',
-    accreditationStatus: 'NBA Tier-1',
-    intakeCapacity: 120,
-    nbaAccredited: true,
-    budgetAllocated: 3200000,
-    budgetSpent: 2450000,
-    budgetUtilization: 76,
-    averageAttendance: 81.0,
-    programs: ['B.Tech ECE'],
-  },
-  {
-    id: 'dept-me',
-    code: 'ME',
-    name: 'Mechanical Engineering',
-    hodName: 'Dr. Arvind Rawat',
-    hodEmail: 'hod.me@jbitdoon.edu.in',
-    building: 'Workshop Complex',
-    facultyCount: 18,
-    studentCount: 190,
-    fsrRatio: '1:10.5',
-    accreditationStatus: 'In Progress',
-    intakeCapacity: 60,
-    nbaAccredited: false,
-    budgetAllocated: 2800000,
-    budgetSpent: 1950000,
-    budgetUtilization: 69,
-    averageAttendance: 78.5,
-    programs: ['B.Tech ME'],
-  },
-  {
-    id: 'dept-ce',
-    code: 'CE',
-    name: 'Civil Engineering',
-    hodName: 'Dr. M. S. Bisht',
-    hodEmail: 'hod.ce@jbitdoon.edu.in',
-    building: 'Block C',
-    facultyCount: 15,
-    studentCount: 160,
-    fsrRatio: '1:10.6',
-    accreditationStatus: 'In Progress',
-    intakeCapacity: 60,
-    nbaAccredited: false,
-    budgetAllocated: 2100000,
-    budgetSpent: 1420000,
-    budgetUtilization: 67,
-    averageAttendance: 79.2,
-    programs: ['B.Tech Civil'],
-  },
-];
+const DEPARTMENT_INCLUDE = {
+  facultyMembers: { where: { deletedAt: null }, include: { user: { select: { name: true, email: true } } } },
+  programs: { select: { name: true } },
+  _count: { select: { students: { where: { deletedAt: null } } } },
+} satisfies Prisma.DepartmentInclude;
+
+type DepartmentRow = Prisma.DepartmentGetPayload<{ include: typeof DEPARTMENT_INCLUDE }>;
+
+/** The HOD is the faculty member whose designation names them head of department. */
+function findHod(d: DepartmentRow) {
+  return d.facultyMembers.find((f) => /\b(head|hod)\b/i.test(f.designation)) ?? null;
+}
 
 @Injectable()
 export class DepartmentsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
-    if (this.prisma.isConnected) {
-      try {
-        const depts = await this.prisma.department.findMany({
-          include: {
-            facultyMembers: { include: { user: true } },
-            students: true,
-            programs: true,
-            subjects: true,
-          },
-          orderBy: { code: 'asc' },
-        });
-
-        if (depts && depts.length > 0) {
-          return depts.map((d) => {
-            const hod =
-              d.facultyMembers.find(
-                (f) =>
-                  f.designation?.toLowerCase().includes('head') ||
-                  f.designation?.toLowerCase().includes('hod'),
-              ) || d.facultyMembers[0];
-
-            const facCount = Math.max(d.facultyMembers.length, 12);
-            const stuCount = d.students.length > 0 ? d.students.length * 35 : 180;
-            const fsr = (stuCount / facCount).toFixed(1);
-
-            return {
-              id: d.id,
-              code: d.code,
-              name: d.name,
-              building: d.building,
-              hodName: hod?.user?.name || 'Dr. V. K. Bhatt',
-              hodEmail: hod?.user?.email || 'hod.cse@jbitdoon.edu.in',
-              facultyCount: facCount,
-              studentCount: stuCount,
-              fsrRatio: `1:${fsr}`,
-              accreditationStatus: d.nbaAccredited ? ('NBA Tier-1' as const) : ('In Progress' as const),
-              intakeCapacity: d.programs.length * 60 || 120,
-              nbaAccredited: d.nbaAccredited,
-              budgetAllocated: d.budgetAllocated || 3500000,
-              budgetSpent: d.budgetSpent || 2400000,
-              budgetUtilization:
-                d.budgetAllocated > 0
-                  ? Math.round((d.budgetSpent / d.budgetAllocated) * 100)
-                  : 68,
-              averageAttendance: 82.5,
-              programs: d.programs.map((p) => p.name),
-            };
-          });
-        }
-      } catch {
-        // Fallback to initial mock if DB disconnected
-      }
-    }
-    return MOCK_DEPARTMENTS;
+    const departments = await this.prisma.department.findMany({
+      include: DEPARTMENT_INCLUDE,
+      orderBy: { code: 'asc' },
+    });
+    const attendance = await this.averageAttendanceByDepartment(departments.map((d) => d.id));
+    return departments.map((d) => this.toView(d, attendance.get(d.id) ?? null));
   }
 
-  async findById(id: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const d = await this.prisma.department.findFirst({
-          where: { OR: [{ id }, { code: id.toUpperCase() }] },
-          include: {
-            facultyMembers: { include: { user: true } },
-            students: true,
-            programs: true,
-            subjects: true,
-          },
-        });
-        if (d) {
-          const hod =
-            d.facultyMembers.find(
-              (f) =>
-                f.designation?.toLowerCase().includes('head') ||
-                f.designation?.toLowerCase().includes('hod'),
-            ) || d.facultyMembers[0];
-          const facCount = Math.max(d.facultyMembers.length, 12);
-          const stuCount = d.students.length > 0 ? d.students.length * 35 : 180;
+  async findById(idOrCode: string) {
+    const department = await this.prisma.department.findFirst({
+      where: { OR: [{ id: idOrCode }, { code: idOrCode.toUpperCase() }] },
+      include: DEPARTMENT_INCLUDE,
+    });
+    if (!department) throw new NotFoundException(`Department ${idOrCode} not found.`);
 
-          return {
-            id: d.id,
-            code: d.code,
-            name: d.name,
-            building: d.building,
-            hodName: hod?.user?.name || 'Dr. V. K. Bhatt',
-            hodEmail: hod?.user?.email || 'hod.cse@jbitdoon.edu.in',
-            facultyCount: facCount,
-            studentCount: stuCount,
-            fsrRatio: `1:${(stuCount / facCount).toFixed(1)}`,
-            accreditationStatus: d.nbaAccredited ? 'NBA Tier-1' : 'In Progress',
-            nbaAccredited: d.nbaAccredited,
-            budgetAllocated: d.budgetAllocated,
-            budgetSpent: d.budgetSpent,
-            programs: d.programs.map((p) => p.name),
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    const dept = MOCK_DEPARTMENTS.find((d) => d.id === id || d.code === id.toUpperCase());
-    if (!dept) throw new NotFoundException(`Department ${id} not found`);
-    return dept;
+    const attendance = await this.averageAttendanceByDepartment([department.id]);
+    return this.toView(department, attendance.get(department.id) ?? null);
   }
 
   async getCurriculum() {
-    if (this.prisma.isConnected) {
-      try {
-        const subjects = await this.prisma.subject.findMany({
-          orderBy: { code: 'asc' },
-        });
-        if (subjects && subjects.length > 0) {
-          return subjects.map((s) => ({
-            code: s.code,
-            name: s.name,
-            credits: s.credits,
-            type: s.type,
-            syllabus: `${Math.min(95, 75 + s.credits * 4)}%`,
-          }));
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return [
-      { code: 'CS-601', name: 'Compiler Design', credits: 4, type: 'THEORY', syllabus: '78%' },
-      { code: 'CS-602', name: 'Cloud Computing & DevOps', credits: 4, type: 'THEORY', syllabus: '85%' },
-      { code: 'CS-603', name: 'Machine Learning Foundations', credits: 4, type: 'THEORY', syllabus: '72%' },
-      { code: 'CS-604', name: 'Cyber Security & Digital Forensics', credits: 3, type: 'THEORY', syllabus: '80%' },
-      { code: 'CS-605P', name: 'Full-Stack Web Engineering Lab', credits: 2, type: 'PRACTICAL', syllabus: '90%' },
-      { code: 'CS-606P', name: 'Cloud & Containerization Lab', credits: 2, type: 'PRACTICAL', syllabus: '88%' },
-    ];
+    const subjects = await this.prisma.subject.findMany({
+      orderBy: [{ semester: 'asc' }, { code: 'asc' }],
+      include: { department: { select: { code: true } } },
+    });
+    return subjects.map((s) => ({
+      code: s.code,
+      name: s.name,
+      credits: s.credits,
+      type: s.type,
+      semester: s.semester,
+      department: s.department.code,
+    }));
   }
 
-  async create(dto: any) {
-    const code = (dto.code || dto.name?.substring(0, 3) || 'DEPT').toUpperCase();
-    if (this.prisma.isConnected) {
-      try {
-        const created = await this.prisma.department.create({
-          data: {
-            name: dto.name,
-            code,
-            building: dto.building || 'Main Academic Wing',
-            nbaAccredited: dto.nbaAccredited ?? true,
-            budgetAllocated: dto.budgetAllocated ? Number(dto.budgetAllocated) : 3500000,
-            budgetSpent: dto.budgetSpent ? Number(dto.budgetSpent) : 1200000,
-          },
-        });
-        return {
-          id: created.id,
-          code: created.code,
-          name: created.name,
-          building: created.building,
-          hodName: dto.hodName || 'Appointed HOD',
-          hodEmail: dto.hodEmail || 'hod@jbitdoon.edu.in',
-          facultyCount: 15,
-          studentCount: 180,
-          fsrRatio: '1:12.0',
-          accreditationStatus: created.nbaAccredited ? 'NBA Tier-1' : 'In Progress',
-          intakeCapacity: 120,
-          nbaAccredited: created.nbaAccredited,
-          budgetAllocated: created.budgetAllocated,
-          budgetSpent: created.budgetSpent,
-          budgetUtilization: 34,
-          averageAttendance: 85,
-          programs: ['B.Tech'],
-        };
-      } catch {
-        // Safe fallback
-      }
-    }
+  async create(dto: CreateDepartmentDto) {
+    const created = await this.prisma.department.create({
+      data: {
+        name: dto.name.trim(),
+        code: dto.code,
+        building: dto.building.trim(),
+        nbaAccredited: dto.nbaAccredited ?? false,
+        budgetAllocated: dto.budgetAllocated ?? 0,
+      },
+    });
+    return this.findById(created.id);
+  }
+
+  private async averageAttendanceByDepartment(departmentIds: string[]) {
+    const rows = await this.prisma.student.groupBy({
+      by: ['departmentId'],
+      where: { departmentId: { in: departmentIds }, deletedAt: null },
+      _avg: { overallAttendance: true },
+    });
+    return new Map(
+      rows.map((r) => [r.departmentId, r._avg.overallAttendance == null ? null : Math.round(r._avg.overallAttendance * 10) / 10]),
+    );
+  }
+
+  private toView(d: DepartmentRow, averageAttendance: number | null) {
+    const hod = findHod(d);
+    const facultyCount = d.facultyMembers.length;
+    const studentCount = d._count.students;
     return {
-      id: `dept-${Date.now()}`,
-      code,
-      name: dto.name,
-      building: dto.building || 'Main Block',
-      hodName: dto.hodName || 'Appointed HOD',
-      hodEmail: dto.hodEmail || 'hod@jbitdoon.edu.in',
-      facultyCount: 15,
-      studentCount: 180,
-      fsrRatio: '1:12.0',
-      accreditationStatus: 'NBA Tier-1',
-      intakeCapacity: 120,
-      nbaAccredited: true,
-      budgetAllocated: 3500000,
-      budgetSpent: 1200000,
-      budgetUtilization: 34,
-      averageAttendance: 85,
-      programs: ['B.Tech'],
+      id: d.id,
+      code: d.code,
+      name: d.name,
+      building: d.building,
+      hodName: hod?.user.name ?? null,
+      hodEmail: hod?.user.email ?? null,
+      facultyCount,
+      studentCount,
+      fsrRatio: facultyCount > 0 ? `1:${(studentCount / facultyCount).toFixed(1)}` : null,
+      nbaAccredited: d.nbaAccredited,
+      accreditationStatus: d.nbaAccredited ? 'NBA Accredited' : 'Not Accredited',
+      programs: d.programs.map((p) => p.name),
+      budgetAllocated: d.budgetAllocated,
+      budgetSpent: d.budgetSpent,
+      budgetUtilization: d.budgetAllocated > 0 ? Math.round((d.budgetSpent / d.budgetAllocated) * 100) : null,
+      averageAttendance,
     };
   }
 }

@@ -1,14 +1,25 @@
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException, Logger } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
-  ServiceUnavailableException,
-  Logger,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { EventsGateway } from '../websocket/events.gateway';
-import { AttendanceStatus, AttendanceVerificationMethod, AttendanceSessionStatus, Prisma } from '@prisma/client';
+  AttendanceStatus,
+  AttendanceVerificationMethod,
+  AttendanceSessionStatus,
+  PetitionStatus,
+  Prisma,
+} from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { EventsGateway } from '../../infrastructure/websocket/events.gateway';
+import {
+  ATTENDANCE_THRESHOLD,
+  CONDONATION_FLOOR,
+  attendancePercent,
+  classesNeededToReachThreshold,
+  countsAsAttended,
+  isBelowThreshold,
+  subjectStanding,
+} from '../../common/utils/attendance-policy';
+import { haversineDistanceMeters } from '../../common/utils/geo';
+import { BatchAttendanceDto, CreatePetitionDto, GenerateQrDto } from './dto/attendance.dto';
 
 export interface SubjectAttendanceStat {
   code: string;
@@ -22,169 +33,87 @@ export interface SubjectAttendanceStat {
   status: 'NORMAL' | 'WARNING' | 'CRITICAL';
 }
 
-const MOCK_ATTENDANCE_SUBJECTS: SubjectAttendanceStat[] = [
-  {
-    code: 'CS-601',
-    name: 'Compiler Design',
-    faculty: 'Dr. V. K. Bhatt',
-    attended: 38,
-    total: 42,
-    percentage: 90.4,
-    minRequired: 75,
-    neededFor75: 0,
-    status: 'NORMAL',
-  },
-  {
-    code: 'CS-602',
-    name: 'Cloud Computing & DevOps',
-    faculty: 'Prof. Ananya Sen',
-    attended: 32,
-    total: 40,
-    percentage: 80.0,
-    minRequired: 75,
-    neededFor75: 0,
-    status: 'NORMAL',
-  },
-  {
-    code: 'CS-603',
-    name: 'Machine Learning Foundations',
-    faculty: 'Dr. Priya Sharma',
-    attended: 28,
-    total: 39,
-    percentage: 71.7,
-    minRequired: 75,
-    neededFor75: 4,
-    status: 'WARNING',
-  },
-  {
-    code: 'CS-604',
-    name: 'Cyber Security & Digital Forensics',
-    faculty: 'Prof. Deepak Negi',
-    attended: 34,
-    total: 40,
-    percentage: 85.0,
-    minRequired: 75,
-    neededFor75: 0,
-    status: 'NORMAL',
-  },
-  {
-    code: 'CS-605P',
-    name: 'Full-Stack Web Engineering Lab',
-    faculty: 'Er. Rohan Verma',
-    attended: 21,
-    total: 22,
-    percentage: 95.4,
-    minRequired: 75,
-    neededFor75: 0,
-    status: 'NORMAL',
-  },
-];
+const QR_TTL_SECONDS = 60;
+const DEFAULT_GEOFENCE_RADIUS_M = 35;
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 @Injectable()
 export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
-  private static readonly DEFAULT_GEOFENCE_RADIUS_M = 35;
 
   constructor(
     private prisma: PrismaService,
     private eventsGateway: EventsGateway,
   ) {}
 
-  /**
-   * Mathematically calculates student attendance & statutory 75% UTU metrics
-   */
-  async getStudentSummary(studentId: string) {
-    let subjects = MOCK_ATTENDANCE_SUBJECTS;
-
-    if (this.prisma.isConnected) {
-      try {
-        let resolvedStudentId = studentId;
-        const student = await this.prisma.student.findFirst({
-          where: {
-            OR: [
-              { id: studentId },
-              { userId: studentId },
-              { rollNumber: studentId },
-              { user: { email: studentId } },
-            ],
-          },
-        });
-        if (student) {
-          resolvedStudentId = student.id;
-        }
-
-        const records = await this.prisma.attendanceRecord.findMany({
-          where: { studentId: resolvedStudentId },
-          include: {
-            session: {
-              include: { subject: true, faculty: { include: { user: true } } },
-            },
-          },
-        });
-
-      if (records.length > 0) {
-        // Group by subject
-        const map = new Map<string, { code: string; name: string; faculty: string; attended: number; total: number }>();
-        for (const rec of records) {
-          const sub = rec.session.subject;
-          const curr = map.get(sub.code) || {
-            code: sub.code,
-            name: sub.name,
-            faculty: rec.session.faculty.user.name,
-            attended: 0,
-            total: 0,
-          };
-          curr.total += 1;
-          if (rec.status === AttendanceStatus.PRESENT || rec.status === AttendanceStatus.EXCUSED) {
-            curr.attended += 1;
-          }
-          map.set(sub.code, curr);
-        }
-
-        subjects = Array.from(map.values()).map((s) => {
-          const pct = Number(((s.attended / s.total) * 100).toFixed(1));
-          // Correct math: how many consecutive classes to attend to reach 75%
-          // (attended + x) / (total + x) >= 0.75 => x >= (0.75 * total - attended) / 0.25
-          const needed = pct >= 75 ? 0 : Math.max(0, Math.ceil((0.75 * s.total - s.attended) / 0.25));
-
-          return {
-            ...s,
-            percentage: pct,
-            minRequired: 75,
-            neededFor75: needed,
-            status: pct >= 75 ? 'NORMAL' : pct >= 65 ? 'WARNING' : 'CRITICAL',
-          };
-        });
-      }
-    } catch {
-      // Fallback
-    }
+  /** Accepts a student id, user id, roll number or email (admin lookups) and returns the student id. */
+  private async resolveStudentId(identifier: string): Promise<string> {
+    const student = await this.prisma.student.findFirst({
+      where: {
+        OR: [{ id: identifier }, { userId: identifier }, { rollNumber: identifier }, { user: { email: identifier } }],
+      },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException(`Student ${identifier} not found.`);
+    return student.id;
   }
+
+  /** Per-subject and overall attendance computed from real AttendanceRecord rows. */
+  async getStudentSummary(identifier: string) {
+    const studentId = await this.resolveStudentId(identifier);
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { studentId },
+      include: { session: { include: { subject: true, faculty: { include: { user: true } } } } },
+    });
+
+    const bySubject = new Map<string, { code: string; name: string; faculty: string; attended: number; total: number }>();
+    for (const rec of records) {
+      const { subject, faculty } = rec.session;
+      const entry = bySubject.get(subject.code) ?? {
+        code: subject.code,
+        name: subject.name,
+        faculty: faculty.user.name,
+        attended: 0,
+        total: 0,
+      };
+      entry.total += 1;
+      if (countsAsAttended(rec.status)) entry.attended += 1;
+      bySubject.set(subject.code, entry);
+    }
+
+    const subjects: SubjectAttendanceStat[] = [...bySubject.values()].map((s) => {
+      const percentage = attendancePercent(s.attended, s.total);
+      return {
+        ...s,
+        percentage,
+        minRequired: ATTENDANCE_THRESHOLD,
+        neededFor75: classesNeededToReachThreshold(s.attended, s.total),
+        status: percentage >= ATTENDANCE_THRESHOLD ? 'NORMAL' : percentage >= CONDONATION_FLOOR ? 'WARNING' : 'CRITICAL',
+      };
+    });
 
     const totalClasses = subjects.reduce((sum, s) => sum + s.total, 0);
     const totalAttended = subjects.reduce((sum, s) => sum + s.attended, 0);
-    const overallPercentage =
-      totalClasses > 0
-        ? Number(((totalAttended / totalClasses) * 100).toFixed(1))
-        : subjects.length > 0
-        ? Number((subjects.reduce((sum, s) => sum + s.percentage, 0) / subjects.length).toFixed(1))
-        : 100.0;
-    const isDebarred = overallPercentage < 75.0;
+    const overallPercentage = attendancePercent(totalAttended, totalClasses);
 
     return {
       studentId,
       overallPercentage,
       totalAttended,
       totalClasses,
-      isDebarred,
-      statutoryThreshold: 75,
+      // No classes conducted yet is not a shortfall.
+      isDebarred: totalClasses > 0 && isBelowThreshold(overallPercentage),
+      statutoryThreshold: ATTENDANCE_THRESHOLD,
       subjects,
     };
   }
 
-  /**
-   * Returns array of subject attendance for web dashboard
-   */
+  /** Subject-wise attendance in the shape the web dashboard expects. */
   async getSubjectAttendanceList(studentId: string) {
     const summary = await this.getStudentSummary(studentId);
     return summary.subjects.map((s) => ({
@@ -194,120 +123,116 @@ export class AttendanceService {
       conducted: s.total,
       attended: s.attended,
       percentage: s.percentage,
-      status: s.percentage >= 85 ? 'EXCELLENT' : s.percentage >= 75 ? 'SAFE' : s.percentage >= 65 ? 'WARNING' : 'CRITICAL',
+      status: subjectStanding(s.percentage),
       requiredToReach75: s.neededFor75,
     }));
   }
 
-  /**
-   * Returns pending attendance correction petitions for HOD / Faculty
-   */
+  /** Pending attendance-correction petitions (duty leave / medical) for staff review. */
   async getAttendanceCorrections() {
-    return [
-      {
-        id: 'CORR-01',
-        studentId: 'stu-02',
-        studentName: 'Devendra Bisht',
-        rollNumber: '220102012',
-        subjectCode: 'CS-601',
-        subjectName: 'Compiler Design',
-        date: '2026-05-18',
-        period: 2,
-        reason: 'Represented JBIT at Inter-University Robotics Summit',
-        type: 'DUTY_LEAVE',
-        status: 'PENDING',
-        attachmentUrl: '/documents/duty-leave-cert.pdf',
-      },
-      {
-        id: 'CORR-02',
-        studentId: 'stu-05',
-        studentName: 'Mohit Semwal',
-        rollNumber: '220102024',
-        subjectCode: 'CS-603',
-        subjectName: 'Machine Learning Foundations',
-        date: '2026-05-20',
-        period: 3,
-        reason: 'Medical Leave — Hospitalized for Dengue Fever',
-        type: 'MEDICAL',
-        status: 'PENDING',
-        attachmentUrl: '/documents/medical-fit-cert.pdf',
-      },
-    ];
+    return this.findPetitions({ status: PetitionStatus.PENDING });
   }
 
-  private requireDb() {
-    if (!this.prisma.isConnected) {
-      throw new ServiceUnavailableException(
-        'Attendance database is currently unreachable. Please try again shortly — this action was NOT recorded.',
-      );
-    }
+  /** A student's own petitions in every state. */
+  async getMyPetitions(studentId: string) {
+    return this.findPetitions({ studentId });
   }
 
-  private startOfToday(): Date {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+  async createPetition(studentId: string, dto: CreatePetitionDto) {
+    const subject = await this.prisma.subject.findUnique({ where: { code: dto.subjectCode } });
+    if (!subject) throw new BadRequestException(`Unknown subject code: ${dto.subjectCode}`);
+    if (dto.date > new Date()) throw new BadRequestException('You cannot petition for a class that has not happened yet.');
+
+    const petition = await this.prisma.attendancePetition.create({
+      data: {
+        studentId,
+        subjectId: subject.id,
+        date: dto.date,
+        period: dto.period,
+        reason: dto.reason.trim(),
+        documentUrl: dto.documentUrl,
+      },
+    });
+    const [view] = await this.findPetitions({ id: petition.id });
+    return view;
+  }
+
+  private async findPetitions(where: Prisma.AttendancePetitionWhereInput) {
+    const petitions = await this.prisma.attendancePetition.findMany({
+      where,
+      include: { student: { include: { user: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // AttendancePetition stores subjectId without a relation; resolve names in one query.
+    const subjects = await this.prisma.subject.findMany({
+      where: { id: { in: [...new Set(petitions.map((p) => p.subjectId))] } },
+      select: { id: true, code: true, name: true },
+    });
+    const subjectById = new Map(subjects.map((s) => [s.id, s]));
+
+    return petitions.map((p) => ({
+      id: p.id,
+      studentId: p.studentId,
+      studentName: p.student.user.name,
+      rollNumber: p.student.rollNumber,
+      subjectCode: subjectById.get(p.subjectId)?.code ?? null,
+      subjectName: subjectById.get(p.subjectId)?.name ?? null,
+      date: p.date.toISOString(),
+      period: p.period,
+      reason: p.reason,
+      status: p.status,
+      remarks: p.remarks,
+      attachmentUrl: p.documentUrl,
+      createdAt: p.createdAt.toISOString(),
+    }));
   }
 
   private async resolveSubjectAndSection(subjectCode: string, sectionName: string) {
-    const subject = await this.prisma.subject.findUnique({ where: { code: subjectCode } });
-    if (!subject) {
-      throw new BadRequestException(`Unknown subject code: ${subjectCode}`);
-    }
-    const section = await this.prisma.section.findFirst({ where: { name: sectionName } });
-    if (!section) {
-      throw new BadRequestException(`Unknown section: ${sectionName}`);
-    }
+    const [subject, section] = await Promise.all([
+      this.prisma.subject.findUnique({ where: { code: subjectCode } }),
+      this.prisma.section.findFirst({ where: { name: sectionName } }),
+    ]);
+    if (!subject) throw new BadRequestException(`Unknown subject code: ${subjectCode}`);
+    if (!section) throw new BadRequestException(`Unknown section: ${sectionName}`);
     return { subject, section };
   }
 
-  /** Recomputes and persists the cached Student.overallAttendance / isDebarred fields from real records. */
+  /** Recomputes the cached Student.overallAttendance / isDebarred fields from real records. */
   private async recalculateStudentAttendance(studentId: string) {
-    const records = await this.prisma.attendanceRecord.findMany({ where: { studentId } });
+    const records = await this.prisma.attendanceRecord.findMany({ where: { studentId }, select: { status: true } });
     if (records.length === 0) return;
-    const attended = records.filter(
-      (r) => r.status === AttendanceStatus.PRESENT || r.status === AttendanceStatus.EXCUSED,
-    ).length;
-    const percentage = Number(((attended / records.length) * 100).toFixed(1));
+
+    const percentage = attendancePercent(records.filter((r) => countsAsAttended(r.status)).length, records.length);
     await this.prisma.student.update({
       where: { id: studentId },
-      data: { overallAttendance: percentage, isDebarred: percentage < 75.0 },
+      data: { overallAttendance: percentage, isDebarred: isBelowThreshold(percentage) },
     });
   }
 
   /**
-   * Faculty generates/rotates a 60s QR token with classroom geofence, backed by a
-   * real AttendanceSession row. Re-generating within the same class period rotates
-   * the token on the existing OPEN session rather than fragmenting records across
-   * multiple sessions.
+   * Generates/rotates a 60s QR token with an optional classroom geofence, backed by
+   * a real AttendanceSession. Re-generating within the same period rotates the token
+   * on the existing OPEN session rather than fragmenting records across sessions.
    */
-  async generateQrSession(data: {
-    facultyId: string;
-    subjectCode: string;
-    section: string;
-    period: number;
-    latitude?: number;
-    longitude?: number;
-  }) {
-    this.requireDb();
-    const { subject, section } = await this.resolveSubjectAndSection(data.subjectCode, data.section);
-
-    const token = `JBIT-QR-${data.subjectCode}-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const expiresAt = new Date(Date.now() + 60 * 1000);
-    const today = this.startOfToday();
+  async generateQrSession(facultyId: string, dto: GenerateQrDto) {
+    const { subject, section } = await this.resolveSubjectAndSection(dto.subjectCode, dto.section);
+    const token = `JBIT-QR-${dto.subjectCode}-${Date.now()}-${randomInt(1000, 10000)}`;
+    const expiresAt = new Date(Date.now() + QR_TTL_SECONDS * 1000);
+    const today = startOfToday();
 
     const existing = await this.prisma.attendanceSession.findFirst({
       where: {
         subjectId: subject.id,
         sectionId: section.id,
-        period: data.period,
+        period: dto.period,
         date: today,
         status: AttendanceSessionStatus.OPEN,
       },
     });
 
-    const geofenceLat = data.latitude ?? existing?.geofenceLat ?? undefined;
-    const geofenceLng = data.longitude ?? existing?.geofenceLng ?? undefined;
+    const geofenceLat = dto.latitude ?? existing?.geofenceLat ?? undefined;
+    const geofenceLng = dto.longitude ?? existing?.geofenceLng ?? undefined;
 
     const session = existing
       ? await this.prisma.attendanceSession.update({
@@ -318,48 +243,36 @@ export class AttendanceService {
           data: {
             subjectId: subject.id,
             sectionId: section.id,
-            facultyId: data.facultyId,
+            facultyId,
             date: today,
-            period: data.period,
+            period: dto.period,
             status: AttendanceSessionStatus.OPEN,
             qrToken: token,
             qrExpiresAt: expiresAt,
             geofenceLat,
             geofenceLng,
-            geofenceRadius: AttendanceService.DEFAULT_GEOFENCE_RADIUS_M,
+            geofenceRadius: DEFAULT_GEOFENCE_RADIUS_M,
           },
         });
 
     return {
       qrCodeToken: session.qrToken,
-      expiresInSeconds: 60,
+      expiresInSeconds: QR_TTL_SECONDS,
       expiresAt: session.qrExpiresAt,
-      subjectCode: data.subjectCode,
-      section: data.section,
-      period: data.period,
+      subjectCode: dto.subjectCode,
+      section: dto.section,
+      period: dto.period,
       geofenceValidated: geofenceLat != null && geofenceLng != null,
       sessionId: session.id,
     };
   }
 
   /**
-   * Student scans classroom QR token. Validates the token against the real,
-   * live AttendanceSession row (no fallback bypass), enforces the geofence when
-   * one is configured, and relies on the sessionId+studentId unique constraint
-   * to prevent duplicate scans of the same session.
+   * Student scans a classroom QR token. Validated against the live session, the
+   * geofence is enforced when configured, and the sessionId+studentId unique
+   * constraint prevents duplicate scans.
    */
-  async scanAndVerifyQr(data: {
-    qrToken: string;
-    studentId: string;
-    userLat?: number;
-    userLng?: number;
-  }) {
-    this.requireDb();
-
-    if (!data.qrToken) {
-      throw new BadRequestException('No QR code provided.');
-    }
-
+  async scanAndVerifyQr(data: { qrToken: string; studentId: string; userLat?: number; userLng?: number }) {
     const session = await this.prisma.attendanceSession.findUnique({
       where: { qrToken: data.qrToken },
       include: { subject: true, section: true },
@@ -375,12 +288,19 @@ export class AttendanceService {
       throw new BadRequestException('QR code has expired. Please scan the current code — it rotates every 60 seconds.');
     }
 
+    // A valid token only authorises students enrolled in that session's section —
+    // otherwise a forwarded code would let anyone mark themselves present anywhere.
+    const enrolled = await this.prisma.student.findUnique({ where: { id: data.studentId }, select: { sectionId: true } });
+    if (!enrolled || enrolled.sectionId !== session.sectionId) {
+      throw new ForbiddenException('This QR code belongs to a class you are not enrolled in.');
+    }
+
     if (session.geofenceLat != null && session.geofenceLng != null) {
       if (data.userLat == null || data.userLng == null) {
         throw new BadRequestException('Location access is required to mark attendance for this class.');
       }
-      const distance = this.calculateDistance(session.geofenceLat, session.geofenceLng, data.userLat, data.userLng);
-      const radius = session.geofenceRadius ?? AttendanceService.DEFAULT_GEOFENCE_RADIUS_M;
+      const distance = haversineDistanceMeters(session.geofenceLat, session.geofenceLng, data.userLat, data.userLng);
+      const radius = session.geofenceRadius ?? DEFAULT_GEOFENCE_RADIUS_M;
       if (distance > radius) {
         throw new BadRequestException(
           `Geofence validation failed. You are ${Math.round(distance)}m from the classroom (max permitted: ${radius}m).`,
@@ -388,13 +308,8 @@ export class AttendanceService {
       }
     }
 
-    const student = await this.prisma.student.findUnique({
-      where: { id: data.studentId },
-      include: { user: true },
-    });
-    if (!student) {
-      throw new BadRequestException('Student profile not found for this account.');
-    }
+    const student = await this.prisma.student.findUnique({ where: { id: data.studentId }, include: { user: true } });
+    if (!student) throw new NotFoundException('Student profile not found for this account.');
 
     try {
       await this.prisma.attendanceRecord.create({
@@ -414,8 +329,9 @@ export class AttendanceService {
 
     await this.recalculateStudentAttendance(data.studentId);
 
-    const scannedCount = await this.prisma.attendanceRecord.count({ where: { sessionId: session.id } });
+    // Live tally for the faculty's broadcaster screen — best effort, never fails the scan.
     try {
+      const scannedCount = await this.prisma.attendanceRecord.count({ where: { sessionId: session.id } });
       this.eventsGateway.server.to(`class_${session.section.name}`).emit('qr_scan_received', {
         sessionId: session.id,
         studentName: student.user.name,
@@ -424,37 +340,28 @@ export class AttendanceService {
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      this.logger.warn(`Failed to broadcast live scan tally: ${err.message}`);
+      this.logger.warn(`Failed to broadcast live scan tally: ${(err as Error).message}`);
     }
 
     return {
       success: true,
-      message: 'Attendance recorded successfully via Geofenced QR Code.',
+      message: 'Attendance recorded successfully via geofenced QR code.',
       subject: session.subject.code,
       timestamp: new Date().toISOString(),
       method: AttendanceVerificationMethod.QR,
-      statutoryImpact: '+1 Recorded class in UTU Ledger',
     };
   }
 
   /**
-   * Faculty submits/locks bulk roster attendance for a period. Persists real
-   * AttendanceRecord rows (upserted so re-submission corrects rather than
-   * duplicates) and closes the session.
+   * Faculty submits roster attendance for a period. Records are upserted (so a
+   * re-submission corrects rather than duplicates) and the session is closed.
    */
-  async submitBatchAttendance(data: {
-    facultyId: string;
-    subjectCode: string;
-    section: string;
-    period: number;
-    records: { studentId: string; status: AttendanceStatus }[];
-  }) {
-    this.requireDb();
-    const { subject, section } = await this.resolveSubjectAndSection(data.subjectCode, data.section);
-    const today = this.startOfToday();
+  async submitBatchAttendance(facultyId: string, dto: BatchAttendanceDto) {
+    const { subject, section } = await this.resolveSubjectAndSection(dto.subjectCode, dto.section);
+    const today = startOfToday();
 
     const existingSession = await this.prisma.attendanceSession.findFirst({
-      where: { subjectId: subject.id, sectionId: section.id, period: data.period, date: today },
+      where: { subjectId: subject.id, sectionId: section.id, period: dto.period, date: today },
     });
 
     const session = existingSession
@@ -466,15 +373,15 @@ export class AttendanceService {
           data: {
             subjectId: subject.id,
             sectionId: section.id,
-            facultyId: data.facultyId,
+            facultyId,
             date: today,
-            period: data.period,
+            period: dto.period,
             status: AttendanceSessionStatus.CLOSED,
           },
         });
 
     await this.prisma.$transaction(
-      data.records.map((r) =>
+      dto.records.map((r) =>
         this.prisma.attendanceRecord.upsert({
           where: { sessionId_studentId: { sessionId: session.id, studentId: r.studentId } },
           update: { status: r.status, verifiedVia: AttendanceVerificationMethod.MANUAL },
@@ -488,38 +395,18 @@ export class AttendanceService {
       ),
     );
 
-    await Promise.all(data.records.map((r) => this.recalculateStudentAttendance(r.studentId)));
+    await Promise.all(dto.records.map((r) => this.recalculateStudentAttendance(r.studentId)));
 
-    const presentCount = data.records.filter((r) => r.status === AttendanceStatus.PRESENT).length;
-    const absentCount = data.records.filter((r) => r.status === AttendanceStatus.ABSENT).length;
-    const lateCount = data.records.filter((r) => r.status === AttendanceStatus.LATE).length;
-
+    const count = (status: AttendanceStatus) => dto.records.filter((r) => r.status === status).length;
     return {
       success: true,
-      message: `Batch attendance locked for ${data.subjectCode} (${data.section}, Period ${data.period})`,
-      totalSubmitted: data.records.length,
-      presentCount,
-      absentCount,
-      lateCount,
+      message: `Attendance saved for ${dto.subjectCode} (${dto.section}, period ${dto.period}).`,
+      sessionId: session.id,
+      totalSubmitted: dto.records.length,
+      presentCount: count(AttendanceStatus.PRESENT),
+      absentCount: count(AttendanceStatus.ABSENT),
+      lateCount: count(AttendanceStatus.LATE),
       timestamp: new Date().toISOString(),
     };
-  }
-
-  /**
-   * Great circle distance (Haversine formula) in meters
-   */
-  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3; // metres
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
   }
 }

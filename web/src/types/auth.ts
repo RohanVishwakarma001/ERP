@@ -1,4 +1,5 @@
 export type UserRole =
+  | "SUPER_ADMIN"
   | "ADMIN"
   | "HOD"
   | "ACCOUNTANT"
@@ -10,40 +11,22 @@ export type UserRole =
   | "FACULTY"
   | "STUDENT";
 
+/** The signed-in user as returned by the backend's login / refresh responses. */
 export interface User {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  avatarUrl?: string;
   department?: string;
   designation?: string;
-  employeeId?: string;
   rollNumber?: string;
-  program?: string;
   semester?: number;
-  phone?: string;
-  status: "ACTIVE" | "LOCKED" | "SUSPENDED";
-}
-
-export interface AuthSession {
-  user: User | null;
-  token: string | null;
-  refreshToken: string | null;
-  isAuthenticated: boolean;
-  expiresAt: number | null;
+  cgpa?: number;
+  overallAttendance?: number;
 }
 
 export interface LoginCredentials {
-  identifier: string; // Email, Employee ID or Roll Number
-  password?: string;
-  role?: UserRole;
-  otp?: string;
-}
-
-export interface AuthResponse {
-  user: User;
-  token: string;
-  refreshToken: string;
-  requiresOtp?: boolean;
+  /** Email, roll number, enrollment number or employee code. */
+  identifier: string;
+  password: string;
 }

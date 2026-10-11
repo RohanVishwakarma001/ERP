@@ -1,34 +1,32 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NoticesService } from './notices.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { RolesGuard } from '../common/guards/roles.guard';
-import { Roles } from '../common/decorators';
-import { UserRole } from '@prisma/client';
+import { CurrentUser, Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
+import { CreateNoticeDto } from './dto/notices.dto';
 
 @ApiTags('Campus Notices & Circulars')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('notices')
 export class NoticesController {
   constructor(private readonly noticesService: NoticesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get list of published notices and gazettes' })
-  async findAll() {
+  @ApiOperation({ summary: 'Published notices, urgent first' })
+  findAll() {
     return this.noticesService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get specific notice' })
-  async findOne(@Param('id') id: string) {
+  @ApiOperation({ summary: 'Notice with full content' })
+  findOne(@Param('id') id: string) {
     return this.noticesService.findById(id);
   }
 
   @Post()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HOD)
-  @ApiOperation({ summary: 'Publish new institutional circular' })
-  async create(@Body() body: any) {
-    return this.noticesService.create(body);
+  @Roles(...RoleGroups.ACADEMIC_LEADERSHIP)
+  @ApiOperation({ summary: 'Publish a notice' })
+  create(@Body() dto: CreateNoticeDto, @CurrentUser('name') publisherName: string) {
+    return this.noticesService.create(dto, publisherName);
   }
 }

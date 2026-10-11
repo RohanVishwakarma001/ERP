@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
-import { CertificateType } from '@prisma/client';
+import { IsEnum, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { CertificateType, UserRole } from '@prisma/client';
 import { DocumentsService } from './documents.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser, Public } from '../common/decorators';
+import { CurrentStudentId, CurrentUser, Public, Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
 
 class RequestCertificateDto {
   @IsEnum(CertificateType)
@@ -12,6 +12,7 @@ class RequestCertificateDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(500)
   purpose: string;
 }
 
@@ -20,38 +21,49 @@ class RequestCertificateDto {
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('my')
-  @ApiOperation({ summary: 'Get list of personal KYC and academic documents' })
-  async getMyDocuments(@CurrentUser('id') userId: string) {
+  @ApiOperation({ summary: 'Own KYC and academic documents' })
+  getMyDocuments(@CurrentUser('id') userId: string) {
     return this.documentsService.getMyDocuments(userId);
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('certificates/my')
-  @ApiOperation({ summary: 'Get student certificates issued or pending' })
-  async getMyCertificates(@CurrentUser('studentId') studentId: string) {
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student: own certificate requests and issued certificates' })
+  getMyCertificates(@CurrentStudentId() studentId: string) {
     return this.documentsService.getMyCertificates(studentId);
   }
 
-  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('certificates/request')
-  @ApiOperation({ summary: 'Student: Apply for Bonafide, Character, NOC, or Migration Certificate' })
-  async requestCertificate(@CurrentUser('studentId') studentId: string, @Body() dto: RequestCertificateDto) {
-    return this.documentsService.requestCertificate({
-      studentId,
-      type: dto.type,
-      purpose: dto.purpose,
-    });
+  @Roles(UserRole.STUDENT)
+  @ApiOperation({ summary: 'Student: request a Bonafide / Character / NOC / Migration certificate' })
+  requestCertificate(@CurrentStudentId() studentId: string, @Body() dto: RequestCertificateDto) {
+    return this.documentsService.requestCertificate(studentId, dto.type, dto.purpose);
+  }
+
+  @ApiBearerAuth()
+  @Get('certificates/pending')
+  @Roles(...RoleGroups.ADMINS)
+  @ApiOperation({ summary: 'Registrar: certificate requests awaiting issue' })
+  getPending() {
+    return this.documentsService.getPendingCertificateRequests();
+  }
+
+  @ApiBearerAuth()
+  @Post('certificates/:id/issue')
+  @Roles(...RoleGroups.ADMINS)
+  @ApiOperation({ summary: 'Registrar: issue a pending certificate and generate its verification code' })
+  issue(@Param('id') id: string) {
+    return this.documentsService.issueCertificate(id);
   }
 
   @Public()
   @Get('certificates/verify/:code')
-  @ApiOperation({ summary: 'Public QR Endpoint: Verify authenticity of institutional certificate' })
-  async verifyCertificate(@Param('code') code: string) {
+  @ApiOperation({ summary: 'Public: verify a certificate by its QR verification code' })
+  verifyCertificate(@Param('code') code: string) {
     return this.documentsService.verifyCertificate(code);
   }
 }

@@ -1,123 +1,109 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { Sidebar } from "./sidebar";
-import { Header } from "./header";
-import { CommandSearch } from "../ui/command-search";
-import { UserRole } from "@/types";
-import { authService } from "@/services/auth.service";
-import { ROLES_CONFIG } from "@/lib/roles";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { clsx } from "clsx";
+import { useAuth } from "@/features/auth";
+import { getDefaultDashboardPath, isPathAllowedForRole } from "@/lib/auth/route-guards";
+import { CommandSearch } from "../ui/command-search";
+import { FullScreenLoader } from "./full-screen-loader";
+import { Header } from "./header";
+import { Sidebar } from "./sidebar";
 
-interface DashboardLayoutProps {
-  children: React.ReactNode;
-  role?: UserRole;
-}
+const COLLAPSE_KEY = "jbit.sidebarCollapsed";
 
-export function DashboardLayout({ children, role = "ADMIN" }: DashboardLayoutProps) {
+/**
+ * Authenticated page shell (sidebar + header). The real access gate is the
+ * server-side proxy; this client check only covers a session that changed while
+ * the tab was open.
+ */
+export function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const { status, user } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try {
+      return typeof window !== "undefined" && window.localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // The drawer counts as open only on the path it was opened from, so navigating closes it.
+  const [mobileMenuPath, setMobileMenuPath] = useState<string | null>(null);
+  const isMobileMenuOpen = mobileMenuPath === pathname;
   const [isCommandSearchOpen, setIsCommandSearchOpen] = useState(false);
-  // The real access gate already ran server-side in proxy.ts before this page was
-  // ever sent to the browser. This state only tracks whether the in-memory access token
-  // (needed for API calls) has been re-derived from the httpOnly refresh cookie yet.
-  const [isReady, setIsReady] = useState(false);
+
+  const isAllowed = user ? isPathAllowedForRole(user.role, pathname) : false;
 
   useEffect(() => {
-    let cancelled = false;
+    if (status === "unauthenticated") router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    else if (status === "authenticated" && user && !isAllowed) router.replace(getDefaultDashboardPath(user.role));
+  }, [status, user, isAllowed, pathname, router]);
 
-    authService.restoreSession().then((user) => {
-      if (cancelled) return;
-      if (!user) {
-        router.replace("/login");
-        return;
+  // Drawer: Escape closes it and the page behind doesn't scroll.
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileMenuPath(null);
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [isMobileMenuOpen]);
+
+  const toggleCollapsed = () =>
+    setIsSidebarCollapsed((v) => {
+      try {
+        window.localStorage.setItem(COLLAPSE_KEY, v ? "0" : "1");
+      } catch {
+        /* storage unavailable: preference just isn't remembered */
       }
-      // Defense-in-depth only: proxy.ts already enforced this. Guards against a
-      // stale client render if the session's role changed since the page loaded.
-      if (user.role !== "ADMIN" && role && user.role !== role) {
-        router.replace(ROLES_CONFIG[user.role]?.defaultPath || "/login");
-        return;
-      }
-      setIsReady(true);
+      return !v;
     });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [role, router]);
-
-  // Loading state prevents unauthorized flash
-  if (!isReady) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#0B3B60] text-white flex items-center justify-center font-bold text-lg animate-pulse">
-            J
-          </div>
-          <p className="text-xs text-slate-500 font-semibold tracking-wider uppercase">
-            Verifying Institutional Credentials...
-          </p>
-        </div>
-      </div>
-    );
+  if (status !== "authenticated" || !user || !isAllowed) {
+    return <FullScreenLoader label="Verifying your session…" />;
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans">
-      {/* Desktop Sidebar */}
+    <div className="min-h-dvh bg-surface-canvas text-slate-800">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-xl focus:bg-white focus:shadow-lg focus:text-sm focus:font-medium"
+      >
+        Skip to content
+      </a>
+
       <div className="hidden lg:block">
-        <Sidebar
-          currentRole={role}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
+        <Sidebar role={user.role} isCollapsed={isSidebarCollapsed} onToggleCollapse={toggleCollapsed} />
       </div>
 
-      {/* Mobile Drawer Backdrop */}
       {isMobileMenuOpen && (
-        <div
-          onClick={() => setIsMobileMenuOpen(false)}
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs lg:hidden"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-72 h-full bg-white shadow-2xl animate-in slide-in-from-left duration-200"
-          >
-            <Sidebar
-              currentRole={role}
-              isCollapsed={false}
-              onToggleCollapse={() => setIsMobileMenuOpen(false)}
-            />
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
+          <div aria-hidden onClick={() => setMobileMenuPath(null)} className="absolute inset-0 bg-black/40 animate-in fade-in" />
+          <div className="relative w-[min(18rem,85vw)] h-full bg-white shadow-xl animate-in slide-in-from-left">
+            <Sidebar role={user.role} isCollapsed={false} onToggleCollapse={() => setMobileMenuPath(null)} variant="drawer" />
           </div>
         </div>
       )}
 
-      {/* Top Fixed Header */}
       <Header
         isSidebarCollapsed={isSidebarCollapsed}
-        onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
+        onOpenMobileMenu={() => setMobileMenuPath(pathname)}
         onOpenCommandSearch={() => setIsCommandSearchOpen(true)}
       />
 
-      {/* Main Content Area */}
       <main
-        className={clsx(
-          "flex-1 pt-16 transition-all duration-300 min-h-screen",
-          isSidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
-        )}
+        id="main-content"
+        tabIndex={-1}
+        className={clsx("pt-16 min-h-dvh outline-none transition-[padding] duration-200", isSidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-64")}
       >
-        <div className="p-6 max-w-[1600px] mx-auto w-full">
-          {children}
-        </div>
+        <div className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8 max-w-[1440px] mx-auto w-full">{children}</div>
       </main>
 
-      {/* Global ⌘K Command Search Modal */}
-      <CommandSearch
-        isOpen={isCommandSearchOpen}
-        onClose={() => setIsCommandSearchOpen(false)}
-      />
+      <CommandSearch isOpen={isCommandSearchOpen} onOpenChange={setIsCommandSearchOpen} />
     </div>
   );
 }

@@ -1,312 +1,304 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { AssessmentType, ResultStatus } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { PASSING_GRADE_POINT, computeSgpa, gradeFor } from '../../common/utils/grading';
+import { GenerateSeatingDto, RecordMarksDto } from './dto/examinations.dto';
+import { interleaveByGroup, seatPositions } from './seating';
 
-const MOCK_EXAM_SCHEDULE = [
-  {
-    code: 'CS-601',
-    subject: 'Compiler Design',
-    date: '02 June 2026',
-    time: '09:30 AM - 12:30 PM',
-    type: 'THEORY',
-    room: 'LH-302 / LH-303',
-  },
-  {
-    code: 'CS-602',
-    subject: 'Cloud Computing & DevOps',
-    date: '05 June 2026',
-    time: '09:30 AM - 12:30 PM',
-    type: 'THEORY',
-    room: 'LH-302 / LH-303',
-  },
-  {
-    code: 'CS-603',
-    subject: 'Machine Learning Foundations',
-    date: '08 June 2026',
-    time: '09:30 AM - 12:30 PM',
-    type: 'THEORY',
-    room: 'Audi-01 / Audi-02',
-  },
-  {
-    code: 'CS-605P',
-    subject: 'Full-Stack Web Engineering Lab',
-    date: '11 June 2026',
-    time: '10:00 AM - 01:00 PM',
-    type: 'PRACTICAL',
-    room: 'Turing Innovation Lab',
-  },
-];
+const DEFAULT_DESKS_PER_ROW = 6;
+const PUBLISHED_RESULT_STATUSES: ResultStatus[] = [ResultStatus.PUBLISHED, ResultStatus.LOCKED];
+
+const formatDate = (d: Date) => d.toISOString().slice(0, 10);
 
 @Injectable()
 export class ExaminationsService {
   constructor(private prisma: PrismaService) {}
 
   async getSchedule() {
-    if (this.prisma.isConnected) {
-      try {
-        const schedules = await this.prisma.examSchedule.findMany({
-          include: { subject: true, exam: true },
-          orderBy: { date: 'asc' },
-        });
-
-        if (schedules && schedules.length > 0) {
-          return schedules.map((s) => ({
-            code: s.subject.code,
-            subject: s.subject.name,
-            date: new Date(s.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
-            time: `${s.startTime} - ${s.endTime}`,
-            type: s.subject.type,
-            room: 'LH-302 / LH-303',
-          }));
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return MOCK_EXAM_SCHEDULE;
+    const schedules = await this.prisma.examSchedule.findMany({
+      include: { subject: true, exam: true, examRooms: { include: { room: true } } },
+      orderBy: { date: 'asc' },
+    });
+    return schedules.map((s) => ({
+      id: s.id,
+      examTitle: s.exam.title,
+      code: s.subject.code,
+      subject: s.subject.name,
+      date: formatDate(s.date),
+      time: `${s.startTime} - ${s.endTime}`,
+      type: s.subject.type,
+      maxMarks: s.maxMarks,
+      rooms: s.examRooms.map((r) => r.room.roomNumber),
+    }));
   }
 
-  async generateSeatingMatrix(params: { examDate: string; roomId: string; totalStudents?: number }) {
-    const seats = [];
-    const rows = 6;
-    const cols = 6;
-    let seatNum = 1;
-
-    for (let r = 1; r <= rows; r++) {
-      for (let c = 1; c <= cols; c++) {
-        const branch = (r + c) % 2 === 0 ? 'CSE' : 'ECE';
-        seats.push({
-          seatNumber: `SEAT-${String.fromCharCode(64 + r)}${c}`,
-          deskRow: r,
-          deskCol: c,
-          allocatedBranch: branch,
-          allocatedRoll: `2201020${seatNum < 10 ? '0' + seatNum : seatNum}`,
-          status: 'ALLOCATED',
-        });
-        seatNum++;
-      }
-    }
-
-    return {
-      roomId: params.roomId || 'LH-302',
-      examDate: params.examDate || '02 June 2026',
-      totalCapacity: rows * cols,
-      allocatedCount: seats.length,
-      seatingMatrix: seats,
-    };
-  }
-
-  async getStudentGradeCard(studentId: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const student = await this.prisma.student.findFirst({
-          where: {
-            OR: [
-              { id: studentId },
-              { rollNumber: studentId },
-              { user: { email: studentId } },
-            ],
-          },
-          include: {
-            user: true,
-            program: true,
-            results: {
-              where: { semester: 5 },
-              orderBy: { publishedAt: 'desc' },
-            },
-          },
-        });
-
-        if (student) {
-          const res = student.results[0];
-          const courses = [
-            { code: 'CS-601', name: 'Compiler Design', credits: 4, marks: 88, grade: 'A+', gradePoint: 9 },
-            { code: 'CS-602', name: 'Cloud Computing & DevOps', credits: 4, marks: 92, grade: 'O', gradePoint: 10 },
-            { code: 'CS-603', name: 'Machine Learning Foundations', credits: 4, marks: 81, grade: 'A+', gradePoint: 9 },
-            { code: 'CS-604', name: 'Cyber Security & Forensics', credits: 3, marks: 76, grade: 'A', gradePoint: 8 },
-            { code: 'CS-605P', name: 'Full-Stack Web Lab', credits: 2, marks: 95, grade: 'O', gradePoint: 10 },
-            { code: 'CS-606P', name: 'Cloud Container Lab', credits: 2, marks: 90, grade: 'O', gradePoint: 10 },
-          ];
-          const totalCredits = courses.reduce((sum, c) => sum + c.credits, 0);
-          const sgpa = res?.sgpa || 8.92;
-          const cgpa = res?.cgpa || student.cgpa || 8.92;
-
-          return {
-            rollNumber: student.rollNumber,
-            studentName: student.user.name,
-            program: student.program.name,
-            studentId: student.id,
-            semester: student.semester,
-            academicYear: '2025-2026',
-            totalCreditsEarned: totalCredits,
-            sgpa,
-            cgpa,
-            cumulativeCgpa: cgpa,
-            resultStatus: 'PASSED (FIRST CLASS WITH DISTINCTION)',
-            backlogs: 0,
-            utuAffiliationNode: 'UTU/NODE/DEH-04',
-            digitalVerificationHash: '0x88f2a991c0b749d2e1329a43fe7d8902',
-            subjects: courses.map((c) => ({
-              code: c.code,
-              title: c.name,
-              credits: c.credits,
-              internalMarks: Math.round(c.marks * 0.3),
-              externalMarks: Math.round(c.marks * 0.7),
-              totalMarks: c.marks,
-              grade: c.grade,
-              gradePoints: c.gradePoint,
-              status: 'PASS' as const,
-            })),
-            courses,
-            isVerifiedNAD: true,
-            blockchainHash: '0x88f2a991c0b749d2e1329a43fe7d8902',
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    const courses = [
-      { code: 'CS-601', name: 'Compiler Design', credits: 4, marks: 88, grade: 'A+', gradePoint: 9 },
-      { code: 'CS-602', name: 'Cloud Computing & DevOps', credits: 4, marks: 92, grade: 'O', gradePoint: 10 },
-      { code: 'CS-603', name: 'Machine Learning Foundations', credits: 4, marks: 81, grade: 'A+', gradePoint: 9 },
-      { code: 'CS-604', name: 'Cyber Security & Forensics', credits: 3, marks: 76, grade: 'A', gradePoint: 8 },
-      { code: 'CS-605P', name: 'Full-Stack Web Lab', credits: 2, marks: 95, grade: 'O', gradePoint: 10 },
-      { code: 'CS-606P', name: 'Cloud Container Lab', credits: 2, marks: 90, grade: 'O', gradePoint: 10 },
-    ];
-
-    const totalCredits = courses.reduce((sum, c) => sum + c.credits, 0);
-    const weightedPoints = courses.reduce((sum, c) => sum + c.credits * c.gradePoint, 0);
-    const sgpa = Number((weightedPoints / totalCredits).toFixed(2));
-
-    return {
-      rollNumber: '220102048',
-      studentName: 'Aarav Sharma',
-      program: 'B.Tech CSE',
-      studentId,
-      semester: 6,
-      academicYear: '2025-2026',
-      totalCreditsEarned: totalCredits,
-      sgpa,
-      cgpa: 8.92,
-      cumulativeCgpa: 8.92,
-      resultStatus: 'PASSED (FIRST CLASS WITH DISTINCTION)',
-      backlogs: 0,
-      utuAffiliationNode: 'UTU/NODE/DEH-04',
-      digitalVerificationHash: '0x88f2a991c0b749d2e1329a43fe7d8902',
-      subjects: courses.map((c) => ({
-        code: c.code,
-        title: c.name,
-        credits: c.credits,
-        internalMarks: Math.round(c.marks * 0.3),
-        externalMarks: Math.round(c.marks * 0.7),
-        totalMarks: c.marks,
-        grade: c.grade,
-        gradePoints: c.gradePoint,
-        status: 'PASS' as const,
-      })),
-      courses,
-      isVerifiedNAD: true,
-      blockchainHash: '0x88f2a991c0b749d2e1329a43fe7d8902',
-    };
-  }
-
+  /** Exam cycles with date range and real hall / candidate counts. */
   async getCycles() {
-    if (this.prisma.isConnected) {
-      try {
-        const exams = await this.prisma.exam.findMany({
-          include: { schedules: true },
-          orderBy: { createdAt: 'desc' },
-        });
+    const exams = await this.prisma.exam.findMany({
+      include: { schedules: { include: { examRooms: { include: { _count: { select: { seatings: true } } } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
 
-        if (exams && exams.length > 0) {
-          return exams.map((e) => ({
-            id: e.id,
-            name: e.title,
-            session: e.cycle,
-            academicYear: e.academicYear,
-            status: e.status as 'UPCOMING' | 'ONGOING' | 'COMPLETED' | 'LOCKED',
-            startDate: '2026-06-02',
-            endDate: '2026-06-25',
-            totalCandidates: 840,
-            totalHalls: 14,
-            markLockingClearedCount: 38,
-            totalPortalsCount: 42,
-            admitCardsReleasedPercent: 94.2,
-          }));
-        }
-      } catch {
-        // Fallback
-      }
+    return exams.map((e) => {
+      const dates = e.schedules.map((s) => s.date.getTime());
+      const rooms = e.schedules.flatMap((s) => s.examRooms);
+      return {
+        id: e.id,
+        name: e.title,
+        session: e.cycle,
+        academicYear: e.academicYear,
+        status: e.status,
+        startDate: dates.length ? formatDate(new Date(Math.min(...dates))) : null,
+        endDate: dates.length ? formatDate(new Date(Math.max(...dates))) : null,
+        totalPapers: e.schedules.length,
+        totalHalls: new Set(rooms.map((r) => r.roomId)).size,
+        totalSeatings: rooms.reduce((sum, r) => sum + r._count.seatings, 0),
+      };
+    });
+  }
+
+  /** One row per (paper, room) allocation with its candidate count and invigilators. */
+  async getSeatingHalls() {
+    const examRooms = await this.prisma.examRoom.findMany({
+      include: {
+        room: { include: { building: true } },
+        schedule: { include: { subject: { include: { department: true } } } },
+        invigilators: { include: { faculty: { include: { user: { select: { name: true } } } } } },
+        _count: { select: { seatings: true } },
+      },
+      orderBy: { schedule: { date: 'asc' } },
+    });
+
+    return examRooms.map((er) => ({
+      id: er.id,
+      hallNumber: er.room.roomNumber,
+      block: er.room.building.name,
+      capacity: er.room.capacity,
+      date: formatDate(er.schedule.date),
+      shift: `${er.schedule.startTime} - ${er.schedule.endTime}`,
+      subjectCode: er.schedule.subject.code,
+      assignedDepartments: [er.schedule.subject.department.name],
+      candidateCount: er._count.seatings,
+      invigilators: er.invigilators.map((i) => i.faculty.user.name),
+    }));
+  }
+
+  /**
+   * Seats every eligible, not-yet-seated candidate for a paper into a room, up to
+   * the room's capacity, interleaving departments so neighbours differ.
+   * Eligible = same program and semester as the paper, and not debarred.
+   */
+  async generateSeatingMatrix(dto: GenerateSeatingDto) {
+    const [schedule, room] = await Promise.all([
+      this.prisma.examSchedule.findUnique({ where: { id: dto.scheduleId }, include: { subject: true } }),
+      this.prisma.room.findUnique({ where: { id: dto.roomId } }),
+    ]);
+    if (!schedule) throw new NotFoundException(`Exam schedule ${dto.scheduleId} not found.`);
+    if (!room) throw new NotFoundException(`Room ${dto.roomId} not found.`);
+
+    const examRoom =
+      (await this.prisma.examRoom.findFirst({
+        where: { scheduleId: schedule.id, roomId: room.id },
+        include: { _count: { select: { seatings: true } } },
+      })) ??
+      (await this.prisma.examRoom.create({
+        data: { scheduleId: schedule.id, roomId: room.id },
+        include: { _count: { select: { seatings: true } } },
+      }));
+
+    const freeSeats = room.capacity - examRoom._count.seatings;
+    if (freeSeats <= 0) throw new BadRequestException(`Room ${room.roomNumber} is already full for this paper.`);
+
+    const alreadySeated = await this.prisma.examSeating.findMany({
+      where: { examRoom: { scheduleId: schedule.id } },
+      select: { studentId: true },
+    });
+
+    const candidates = await this.prisma.student.findMany({
+      where: {
+        deletedAt: null,
+        isDebarred: false,
+        programId: schedule.subject.programId,
+        semester: schedule.subject.semester,
+        id: { notIn: alreadySeated.map((s) => s.studentId) },
+      },
+      include: { department: { select: { code: true } } },
+      orderBy: { rollNumber: 'asc' },
+    });
+    if (candidates.length === 0) throw new BadRequestException('No unseated eligible candidates remain for this paper.');
+
+    const ordered = interleaveByGroup(candidates, (c) => c.department.code).slice(0, freeSeats);
+    const positions = seatPositions(examRoom._count.seatings + ordered.length, dto.columns ?? DEFAULT_DESKS_PER_ROW).slice(
+      examRoom._count.seatings,
+    );
+
+    const seats = ordered.map((student, i) => ({ student, ...positions[i] }));
+    await this.prisma.examSeating.createMany({
+      data: seats.map((s) => ({
+        examRoomId: examRoom.id,
+        studentId: s.student.id,
+        seatNumber: s.seatNumber,
+        deskRow: s.deskRow,
+        deskCol: s.deskCol,
+      })),
+    });
+
+    return {
+      examRoomId: examRoom.id,
+      roomNumber: room.roomNumber,
+      examDate: formatDate(schedule.date),
+      subjectCode: schedule.subject.code,
+      totalCapacity: room.capacity,
+      allocatedCount: examRoom._count.seatings + seats.length,
+      unseatedCandidates: candidates.length - seats.length,
+      seatingMatrix: seats.map((s) => ({
+        seatNumber: s.seatNumber,
+        deskRow: s.deskRow,
+        deskCol: s.deskCol,
+        allocatedRoll: s.student.rollNumber,
+        allocatedBranch: s.student.department.code,
+      })),
+    };
+  }
+
+  /** Upserts one assessment's marks for a subject (and optional section). */
+  async recordMarks(dto: RecordMarksDto) {
+    const subject = await this.prisma.subject.findUnique({ where: { code: dto.subjectCode } });
+    if (!subject) throw new BadRequestException(`Unknown subject code: ${dto.subjectCode}`);
+
+    const section = dto.section ? await this.prisma.section.findFirst({ where: { name: dto.section } }) : null;
+    if (dto.section && !section) throw new BadRequestException(`Unknown section: ${dto.section}`);
+
+    const tooHigh = dto.records.find((r) => r.marksObtained > dto.maxMarks);
+    if (tooHigh) {
+      throw new BadRequestException(`Marks for student ${tooHigh.studentId} exceed the maximum of ${dto.maxMarks}.`);
     }
 
-    return [
-      {
-        id: 'CYC-2026-EVEN',
-        name: 'UTU End-Semester Theory & Practical Examinations (Even Sem 2026)',
-        session: 'Even 2025-26',
-        academicYear: '2025-2026',
-        status: 'UPCOMING' as const,
-        startDate: '2026-06-02',
-        endDate: '2026-06-25',
-        totalCandidates: 840,
-        totalHalls: 14,
-        markLockingClearedCount: 38,
-        totalPortalsCount: 42,
-        admitCardsReleasedPercent: 94.2,
-      },
-    ];
-  }
+    const assessment =
+      (await this.prisma.assessment.findFirst({
+        where: { subjectId: subject.id, sectionId: section?.id ?? null, type: dto.assessmentType },
+      })) ??
+      (await this.prisma.assessment.create({
+        data: {
+          subjectId: subject.id,
+          sectionId: section?.id,
+          type: dto.assessmentType,
+          title: `${subject.code} ${dto.assessmentType.replace(/_/g, ' ')}`,
+          maxMarks: dto.maxMarks,
+        },
+      }));
 
-  async getSeatingHalls() {
-    return [
-      {
-        id: 'HALL-LH302',
-        hallNumber: 'LH-302 (Himalayan Wing)',
-        block: 'Block B',
-        capacity: 70,
-        shift: 'Morning (09:30 - 12:30)' as const,
-        assignedDepartments: ['Computer Science & Engineering', 'Electronics & Comm.'],
-        candidateCount: 64,
-        chiefSuperintendent: 'Col. Rajesh Verma (Retd.)',
-        invigilators: ['Dr. V. K. Bhatt', 'Prof. Ananya Sen'],
-        isLocked: true,
-      },
-      {
-        id: 'HALL-LH303',
-        hallNumber: 'LH-303',
-        block: 'Block B',
-        capacity: 70,
-        shift: 'Morning (09:30 - 12:30)' as const,
-        assignedDepartments: ['Mechanical Engineering'],
-        candidateCount: 52,
-        chiefSuperintendent: 'Dr. Arvind Rawat',
-        invigilators: ['Prof. Deepak Negi'],
-        isLocked: true,
-      },
-      {
-        id: 'HALL-AUDI01',
-        hallNumber: 'Central Auditorium Hall 1',
-        block: 'Block A',
-        capacity: 250,
-        shift: 'Morning (09:30 - 12:30)' as const,
-        assignedDepartments: ['First Year (Common Engineering)'],
-        candidateCount: 220,
-        chiefSuperintendent: 'Dr. Suresh Chandra Semwal',
-        invigilators: ['Dr. Priya Sharma', 'Er. S. Nautiyal'],
-        isLocked: false,
-      },
-    ];
-  }
+    await this.prisma.$transaction(
+      dto.records.map((r) =>
+        this.prisma.mark.upsert({
+          where: { assessmentId_studentId: { assessmentId: assessment.id, studentId: r.studentId } },
+          update: { marksObtained: r.marksObtained, isAbsent: r.isAbsent ?? false },
+          create: {
+            assessmentId: assessment.id,
+            studentId: r.studentId,
+            marksObtained: r.marksObtained,
+            isAbsent: r.isAbsent ?? false,
+          },
+        }),
+      ),
+    );
 
-  async lockMarks(body: any) {
-    const timestamp = new Date().toISOString();
     return {
       success: true,
-      status: 'LOCKED',
-      digitalHash: `UTU-CRYPT-NODE04-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-      lockedAt: timestamp,
-      message: 'Marks validated against UTU ordinance, locked and transmitted to secure portal.',
+      assessmentId: assessment.id,
+      subjectCode: subject.code,
+      assessmentType: dto.assessmentType,
+      savedCount: dto.records.length,
+      message: `Saved ${dto.records.length} mark entries for ${subject.code}.`,
+    };
+  }
+
+  /**
+   * Grade card for the student's latest published semester (or current semester if
+   * none is published yet), built from real Assessment / Mark rows. Subjects with
+   * no marks yet are listed with status PENDING rather than invented grades.
+   */
+  async getStudentGradeCard(studentId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: { select: { name: true } },
+        program: true,
+        results: { where: { status: { in: PUBLISHED_RESULT_STATUSES } }, orderBy: { semester: 'desc' }, take: 1 },
+      },
+    });
+    if (!student) throw new NotFoundException('Student profile not found.');
+
+    const result = student.results[0] ?? null;
+    const semester = result?.semester ?? student.semester;
+
+    const subjects = await this.prisma.subject.findMany({
+      where: { programId: student.programId, semester },
+      include: { assessments: { include: { marks: { where: { studentId } } } } },
+      orderBy: { code: 'asc' },
+    });
+
+    const courses = subjects.map((subject) => {
+      let internal = 0;
+      let external = 0;
+      let max = 0;
+      for (const assessment of subject.assessments) {
+        const mark = assessment.marks[0];
+        if (!mark) continue;
+        max += assessment.maxMarks;
+        const obtained = mark.isAbsent ? 0 : mark.marksObtained;
+        if (assessment.type === AssessmentType.END_SEM) external += obtained;
+        else internal += obtained;
+      }
+
+      if (max === 0) {
+        return {
+          code: subject.code,
+          title: subject.name,
+          credits: subject.credits,
+          internalMarks: null,
+          externalMarks: null,
+          totalMarks: null,
+          maxMarks: null,
+          grade: null,
+          gradePoints: null,
+          status: 'PENDING' as const,
+        };
+      }
+
+      const band = gradeFor(((internal + external) / max) * 100);
+      return {
+        code: subject.code,
+        title: subject.name,
+        credits: subject.credits,
+        internalMarks: internal,
+        externalMarks: external,
+        totalMarks: internal + external,
+        maxMarks: max,
+        grade: band.grade,
+        gradePoints: band.gradePoint,
+        status: band.gradePoint >= PASSING_GRADE_POINT ? ('PASS' as const) : ('FAIL' as const),
+      };
+    });
+
+    const graded = courses.filter((c) => c.status !== 'PENDING');
+    const passedCredits = graded.filter((c) => c.status === 'PASS').reduce((sum, c) => sum + c.credits, 0);
+
+    return {
+      studentId: student.id,
+      rollNumber: student.rollNumber,
+      studentName: student.user.name,
+      program: student.program.name,
+      semester,
+      academicYear: result?.academicYear ?? null,
+      resultStatus: result?.status ?? 'NOT_PUBLISHED',
+      publishedAt: result?.publishedAt ?? null,
+      // The officially published SGPA wins over our recomputation when it exists.
+      sgpa: result?.sgpa ?? computeSgpa(graded.map((c) => ({ credits: c.credits, gradePoint: c.gradePoints }))),
+      cgpa: result?.cgpa ?? student.cgpa,
+      totalCreditsEarned: result?.totalCreditsEarned ?? passedCredits,
+      backlogs: graded.filter((c) => c.status === 'FAIL').length,
+      subjects: courses,
     };
   }
 }

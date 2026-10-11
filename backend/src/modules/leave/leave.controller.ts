@@ -1,36 +1,33 @@
-import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LeaveService } from './leave.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators';
+import { CurrentUser, Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+import { CreateLeaveDto, UpdateLeaveStatusDto } from './dto/leave.dto';
 
 @ApiTags('Leave & Duty Leave Requests')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('leave')
 export class LeaveController {
   constructor(private readonly leaveService: LeaveService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get list of leave applications' })
-  async findAll() {
-    return this.leaveService.findAll();
+  @ApiOperation({ summary: 'Leave requests (approvers: all; others: own)' })
+  findAll(@CurrentUser() user: AuthUser) {
+    return this.leaveService.findAll(user);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Submit leave or on-duty request' })
-  async create(@CurrentUser() user: any, @Body() body: any) {
-    return this.leaveService.create({
-      userId: user.id,
-      userName: user.name,
-      role: user.role,
-      ...body,
-    });
+  @ApiOperation({ summary: 'Apply for leave / on-duty' })
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreateLeaveDto) {
+    return this.leaveService.create(user, dto);
   }
 
   @Patch(':id/status')
-  @ApiOperation({ summary: 'HOD / Registrar: Approve or reject leave request' })
-  async updateStatus(@Param('id') id: string, @Body() body: { status: string }) {
-    return this.leaveService.updateStatus(id, body.status);
+  @Roles(...RoleGroups.ACADEMIC_LEADERSHIP)
+  @ApiOperation({ summary: 'HOD / Admin: approve or reject a pending request' })
+  updateStatus(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateLeaveStatusDto) {
+    return this.leaveService.updateStatus(id, user, dto);
   }
 }

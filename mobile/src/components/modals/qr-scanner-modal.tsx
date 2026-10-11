@@ -10,9 +10,10 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import * as Location from 'expo-location';
-import { Colors, Radius, Shadows, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { X, QrCode, MapPin, CheckCircle2, ShieldCheck } from 'lucide-react-native';
-import { mobileStudentService } from '@/services/mobile-services';
+import { attendanceApi } from '@/features/attendance';
+import { getErrorMessage } from '@/lib/api/api-error';
 
 interface QrScannerModalProps {
   visible: boolean;
@@ -28,16 +29,13 @@ export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalPr
   const [locationLabel, setLocationLabel] = useState('Acquiring GPS fix...');
   const hasScannedRef = useRef(false);
 
+  // State resets come from remounting (the parent keys this modal on visibility);
+  // the effect only has to ask for camera access.
   useEffect(() => {
-    if (visible) {
-      setScanState('SCANNING');
-      hasScannedRef.current = false;
-      setLocationLabel('Acquiring GPS fix...');
-      if (!permission?.granted) {
-        requestPermission();
-      }
+    if (visible && permission && !permission.granted && permission.canAskAgain) {
+      requestPermission();
     }
-  }, [visible]);
+  }, [visible, permission, requestPermission]);
 
   const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
     if (hasScannedRef.current || scanState !== 'SCANNING') return;
@@ -57,19 +55,16 @@ export function QrScannerModal({ visible, onClose, onSuccess }: QrScannerModalPr
         setLocationLabel('Location permission denied — geofence cannot be verified');
       }
 
-      const res = await mobileStudentService.verifyQrAttendance(result.data, coords);
+      const res = await attendanceApi.verifyQr(result.data, coords);
       setScanState('SUCCESS');
       setTimeout(() => {
-        onSuccess(res?.subject ? `${res.subject} marked present` : 'Attendance verified');
+        onSuccess(`${res.subject} marked present`);
         onClose();
       }, 1200);
-    } catch (err: any) {
+    } catch (err) {
       hasScannedRef.current = false;
       setScanState('SCANNING');
-      Alert.alert(
-        'QR Attendance Failed',
-        err?.response?.data?.message || 'Could not verify attendance. Please rescan the current classroom code.'
-      );
+      Alert.alert('QR attendance failed', getErrorMessage(err));
     }
   };
 
@@ -179,7 +174,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F2F2F7',
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -197,17 +192,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   subtitle: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     marginTop: 2,
   },
   closeBtn: {
     padding: 6,
     borderRadius: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   viewfinderContainer: {
     alignItems: 'center',
@@ -217,7 +212,7 @@ const styles = StyleSheet.create({
   reticle: {
     width: 260,
     height: 260,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1C1C1E',
     borderRadius: 16,
     position: 'relative',
     overflow: 'hidden',
@@ -263,7 +258,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   verifyingText: {
-    color: '#F8FAFC',
+    color: '#F2F2F7',
     fontSize: 13,
     fontWeight: '700',
     marginTop: 12,
@@ -271,8 +266,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   tokenSubtext: {
-    color: '#94A3B8',
-    fontSize: 11,
+    color: '#737378',
+    fontSize: 12,
     marginTop: 4,
   },
   successTitle: {
@@ -294,11 +289,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   telemetryCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 8,
   },
   telemetryRow: {
@@ -308,7 +303,7 @@ const styles = StyleSheet.create({
   },
   telemetryText: {
     fontSize: 12,
-    color: '#475569',
+    color: '#48484A',
     flex: 1,
   },
 });

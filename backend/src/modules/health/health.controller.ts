@@ -1,38 +1,37 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { Public } from '../common/decorators';
-import { PrismaService } from '../prisma/prisma.service';
+import { Public } from '../../common/decorators';
+import { AppConfig } from '../../config';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 @ApiTags('System Health')
 @Controller('health')
 export class HealthController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: AppConfig,
+  ) {}
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Check API and database operational status' })
+  @ApiOperation({ summary: 'Check API and database operational status (503 when the DB is unreachable)' })
   async check(@Res({ passthrough: true }) res: Response) {
-    let dbStatus: 'CONNECTED' | 'OFFLINE' = 'CONNECTED';
+    let database: 'CONNECTED' | 'OFFLINE' = 'CONNECTED';
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      dbStatus = 'OFFLINE';
+      database = 'OFFLINE';
     }
 
-    const healthy = dbStatus === 'CONNECTED';
+    const healthy = database === 'CONNECTED';
     res.status(healthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE);
 
     return {
       status: healthy ? 'OPERATIONAL' : 'DEGRADED',
-      version: '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
-      institution: 'JB Institute of Technology, Dehradun',
+      environment: this.config.nodeEnv,
       timestamp: new Date().toISOString(),
-      services: {
-        api: 'UP',
-        database: dbStatus,
-      },
+      services: { api: 'UP', database },
     };
   }
 }

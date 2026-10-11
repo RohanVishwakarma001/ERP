@@ -1,36 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-
-const MOCK_MATERIALS = [
-  {
-    id: 'mat-01',
-    subjectCode: 'CS-601',
-    subjectName: 'Compiler Design',
-    title: 'Unit 2: LR Parsing Tables & Yacc Implementation Guide',
-    fileType: 'PDF',
-    fileSize: '3.4 MB',
-    fileUrl: 'https://storage.jbitdoon.edu.in/materials/unit2-parsing.pdf',
-    uploadedBy: 'Dr. V. K. Bhatt',
-    uploadedAt: '2026-05-15',
-  },
-  {
-    id: 'mat-02',
-    subjectCode: 'CS-602',
-    subjectName: 'Cloud Computing & DevOps',
-    title: 'Kubernetes Cluster Architecture & Helm Chart Templates',
-    fileType: 'ZIP',
-    fileSize: '12.8 MB',
-    fileUrl: 'https://storage.jbitdoon.edu.in/materials/k8s-helm.zip',
-    uploadedBy: 'Prof. Ananya Sen',
-    uploadedAt: '2026-05-18',
-  },
-];
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 @Injectable()
 export class MaterialsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    return MOCK_MATERIALS;
+  async findAll(subjectCode?: string) {
+    const materials = await this.prisma.studyMaterial.findMany({
+      where: subjectCode ? { subject: { code: subjectCode } } : {},
+      include: { subject: { select: { code: true, name: true } }, faculty: { include: { user: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return materials.map((m) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      subjectCode: m.subject.code,
+      subjectName: m.subject.name,
+      uploadedBy: m.faculty.user.name,
+      fileUrl: m.fileUrl,
+      fileType: m.fileType,
+      fileSizeBytes: m.fileSize,
+      uploadedAt: m.createdAt.toISOString(),
+    }));
   }
 }

@@ -1,257 +1,163 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-  ActivityIndicator,
-} from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAuthStore } from '@/stores/auth-store';
 import { Colors, Shadows, Spacing } from '@/constants/theme';
-import {
-  QrCode,
-  Users,
-  Clock,
-  MapPin,
-  CheckCircle2,
-  Calendar,
-  AlertCircle,
-  Sparkles,
-  ChevronRight,
-  ShieldCheck,
-} from 'lucide-react-native';
-import { mobileFacultyService } from '@/services/mobile-services';
-import { FacultyClassItem } from '@/types';
+import { QrCode, MapPin, Users } from 'lucide-react-native';
+import { QueryState } from '@/components/common/query-state';
+import { useTodayClasses, useWorkload } from '@/features/faculty';
+import { initials } from '@/lib/format';
+import type { FacultyClassItem } from '@/types';
 
 interface FacultyHomeViewProps {
-  onOpenBroadcaster: () => void;
+  onOpenBroadcaster: (classItem: FacultyClassItem) => void;
   onNavigateTab: (tab: string) => void;
 }
 
 export function FacultyHomeView({ onOpenBroadcaster, onNavigateTab }: FacultyHomeViewProps) {
   const { user } = useAuthStore();
-  const [classes, setClasses] = useState<FacultyClassItem[]>([]);
-  const [workload, setWorkload] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const classes = useTodayClasses();
+  const workload = useWorkload();
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadFacultyHome() {
-      try {
-        const [clsData, wlData] = await Promise.allSettled([
-          mobileFacultyService.getTodayClasses(),
-          mobileFacultyService.getWorkload(),
-        ]);
-        if (isMounted) {
-          if (clsData.status === 'fulfilled') setClasses(Array.isArray(clsData.value) ? clsData.value : []);
-          if (wlData.status === 'fulfilled') setWorkload(wlData.value);
-        }
-      } catch (err) {
-        console.error('Failed to load faculty home', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadFacultyHome();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const activeClass =
-    classes.find((c) => c.status === 'LIVE') ||
-    classes.find((c) => c.status === 'UPCOMING') ||
-    classes[0];
+  const list = classes.data ?? [];
+  const activeClass = list.find((c) => c.status === 'LIVE') ?? list.find((c) => c.status === 'UPCOMING');
+  const w = workload.data;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Dr. Bhatt Academic Console Hero */}
       <View style={styles.heroCard}>
         <View style={styles.heroHeader}>
           <View>
-            <Text style={styles.heroSalutation}>Faculty Academic Hub,</Text>
-            <Text style={styles.heroName}>{user?.name || 'Dr. V. K. Bhatt'}</Text>
-            <Text style={styles.heroSubtext}>
-              {user?.designation || 'Professor & Head of Department'} • {user?.department || 'Computer Science & Engineering'}
-            </Text>
+            <Text style={styles.heroSalutation}>Faculty Hub</Text>
+            <Text style={styles.heroName}>{user?.name}</Text>
+            <Text style={styles.heroSubtext}>{[user?.designation, user?.department].filter(Boolean).join(' • ')}</Text>
           </View>
-          <View style={styles.avatarWrapper}>
-            <Image
-              source={{ uri: user?.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150' }}
-              style={styles.avatar}
-            />
+          <View style={[styles.avatarWrapper, styles.avatarFallback]}>
+            <Text style={styles.avatarInitials}>{initials(user?.name)}</Text>
           </View>
         </View>
 
-        {/* Workload Metric Bar */}
         <View style={styles.workloadBar}>
           <View style={styles.workloadItem}>
             <Text style={styles.workloadLabel}>AICTE TEACHING LOAD</Text>
             <View style={styles.workloadRow}>
-              <Text style={styles.workloadValue}>
-                {workload?.weeklyContactHours ?? 18} / {workload?.aicteStandardHours ?? 18}
-              </Text>
-              <Text style={styles.workloadUnit}>Hrs/Wk ({workload?.compliancePercentage ?? 100}%)</Text>
+              <Text style={styles.workloadValue}>{w ? `${w.weeklyContactHours} / ${w.aicteStandardHours}` : '—'}</Text>
+              <Text style={styles.workloadUnit}>hrs/wk</Text>
             </View>
           </View>
-
           <View style={styles.divider} />
-
           <View style={styles.workloadItem}>
-            <Text style={styles.workloadLabel}>TODAY'S CLASSES</Text>
+            <Text style={styles.workloadLabel}>TODAY&apos;S CLASSES</Text>
             <View style={styles.workloadRow}>
-              <Text style={styles.workloadValue}>{classes.length} Sessions</Text>
+              <Text style={styles.workloadValue}>{classes.data ? list.length : '—'}</Text>
             </View>
           </View>
         </View>
       </View>
 
-      {/* 2. Active Period Banner with 1-Tap QR Broadcaster */}
       {activeClass && (
         <View style={styles.liveBanner}>
           <View style={styles.liveHeader}>
             <View style={styles.liveBadge}>
               <View style={styles.pulsingDot} />
-              <Text style={styles.liveBadgeText}>PERIOD {activeClass.period} {activeClass.status === 'LIVE' ? 'CURRENTLY LIVE' : 'TODAY'}</Text>
+              <Text style={styles.liveBadgeText}>
+                PERIOD {activeClass.period} {activeClass.status === 'LIVE' ? 'IN SESSION' : 'UP NEXT'}
+              </Text>
             </View>
             <Text style={styles.liveTime}>{activeClass.time}</Text>
           </View>
-
-          <Text style={styles.liveSubject}>{activeClass.subjectCode} {activeClass.subjectName}</Text>
-          <Text style={styles.liveSection}>Section {activeClass.section} • {activeClass.room} • {activeClass.totalStudents || 60} Students</Text>
-
-          <TouchableOpacity
-            style={styles.broadcastBtn}
-            onPress={onOpenBroadcaster}
-            activeOpacity={0.8}
-          >
+          <Text style={styles.liveSubject}>
+            {activeClass.subjectCode} {activeClass.subjectName}
+          </Text>
+          <Text style={styles.liveSection}>
+            Section {activeClass.section} • {activeClass.room} • {activeClass.totalStudents} students
+          </Text>
+          <TouchableOpacity style={styles.broadcastBtn} onPress={() => onOpenBroadcaster(activeClass)} activeOpacity={0.8}>
             <QrCode size={18} color="#FFFFFF" />
             <Text style={styles.broadcastBtnText}>Broadcast Classroom QR Code</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* 3. Today's Teaching Schedule */}
       <View style={styles.sectionHeaderBetween}>
-        <Text style={styles.sectionTitle}>TODAY'S CLASS ROSTER</Text>
+        <Text style={styles.sectionTitle}>TODAY&apos;S CLASSES</Text>
         <TouchableOpacity onPress={() => onNavigateTab('timetable')}>
-          <Text style={styles.viewAllText}>Weekly Matrix →</Text>
+          <Text style={styles.viewAllText}>Weekly Timetable →</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.classesList}>
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 20 }} />
-        ) : classes.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No classes scheduled for today.</Text>
-          </View>
-        ) : (
-          classes.map((cls) => {
-          const isCompleted = cls.status === 'COMPLETED';
-          const isLive = cls.status === 'LIVE';
-
-          return (
-            <View
-              key={cls.id}
-              style={[styles.classCard, isLive && styles.liveClassCard]}
-            >
-              <View style={styles.classTimeCol}>
-                <Text style={styles.classPeriod}>P{cls.period}</Text>
-                <Text style={styles.classTime}>{cls.time.split(' - ')[0]}</Text>
-              </View>
-
-              <View style={styles.classDetails}>
-                <View style={styles.classTopRow}>
-                  <Text style={styles.classCode}>{cls.subjectCode}</Text>
-                  <View
-                    style={[
-                      styles.statusPill,
-                      isCompleted ? styles.completedPill : isLive ? styles.livePill : styles.upcomingPill,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusPillText,
-                        isCompleted ? styles.completedText : isLive ? styles.liveText : styles.upcomingText,
-                      ]}
-                    >
-                      {cls.status}
-                    </Text>
+        <QueryState query={classes} emptyText="No classes scheduled for today.">
+          {(items) =>
+            items.map((cls) => {
+              const isCompleted = cls.status === 'COMPLETED';
+              const isLive = cls.status === 'LIVE';
+              return (
+                <View key={cls.id} style={[styles.classCard, isLive && styles.liveClassCard]}>
+                  <View style={styles.classTimeCol}>
+                    <Text style={styles.classPeriod}>P{cls.period}</Text>
+                    <Text style={styles.classTime}>{cls.time.split(' - ')[0]}</Text>
+                  </View>
+                  <View style={styles.classDetails}>
+                    <View style={styles.classTopRow}>
+                      <Text style={styles.classCode}>{cls.subjectCode}</Text>
+                      <View style={[styles.statusPill, isCompleted ? styles.completedPill : isLive ? styles.livePill : styles.upcomingPill]}>
+                        <Text style={[styles.statusPillText, isCompleted ? styles.completedText : isLive ? styles.liveText : styles.upcomingText]}>
+                          {cls.status}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.className}>{cls.subjectName}</Text>
+                    <View style={styles.classMeta}>
+                      <Text style={styles.classSection}>{cls.section}</Text>
+                      <Text style={styles.metaBullet}>•</Text>
+                      <View style={styles.roomRow}>
+                        <MapPin size={11} color="#64748B" />
+                        <Text style={styles.roomText}>{cls.room}</Text>
+                      </View>
+                      <Text style={styles.metaBullet}>•</Text>
+                      <View style={styles.roomRow}>
+                        <Users size={11} color="#64748B" />
+                        <Text style={styles.roomText}>
+                          {cls.markedPresent}/{cls.totalStudents} present
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.classActions}>
+                      <TouchableOpacity style={styles.actionButton} onPress={() => onNavigateTab('attendance')}>
+                        <Text style={styles.actionBtnText}>{isCompleted ? 'Review Attendance' : 'Mark Attendance'}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
-
-                <Text style={styles.className}>{cls.subjectName}</Text>
-
-                <View style={styles.classMeta}>
-                  <Text style={styles.classSection}>{cls.section}</Text>
-                  <Text style={styles.metaBullet}>•</Text>
-                  <View style={styles.roomRow}>
-                    <MapPin size={11} color="#64748B" />
-                    <Text style={styles.roomText}>{cls.room}</Text>
-                  </View>
-                  <Text style={styles.metaBullet}>•</Text>
-                  <View style={styles.roomRow}>
-                    <Users size={11} color="#64748B" />
-                    <Text style={styles.roomText}>
-                      {isCompleted ? `${cls.markedPresent}/${cls.totalStudents} Present` : `${cls.totalStudents} Students`}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Direct Action */}
-                <View style={styles.classActions}>
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => onNavigateTab('attendance')}
-                  >
-                    <Text style={styles.actionBtnText}>
-                      {isCompleted ? 'View Attendance Register' : 'Mark Attendance Roster'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          );
-        }))}
-      </View>
-
-      {/* 4. Pending Departmental Actions */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>PENDING ACTIONS &amp; NOTIFICATIONS</Text>
-      </View>
-      <View style={styles.alertsList}>
-        <View style={styles.alertCard}>
-          <AlertCircle size={18} color="#D97706" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>3 Attendance Petitions Pending Review</Text>
-            <Text style={styles.alertSub}>CSE-6A students submitted medical on-duty slips.</Text>
-          </View>
-          <ChevronRight size={16} color="#94A3B8" />
-        </View>
-
-        <View style={styles.alertCard}>
-          <ShieldCheck size={18} color="#059669" />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>Continuous Assessment (CIA-2) Window Open</Text>
-            <Text style={styles.alertSub}>Deadline to submit marks to Exam Cell is June 5.</Text>
-          </View>
-          <ChevronRight size={16} color="#94A3B8" />
-        </View>
+              );
+            })
+          }
+        </QueryState>
       </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  avatarFallback: {
+    backgroundColor: Colors.light.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  warnTag: {
+    backgroundColor: '#DC2626',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   content: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 32,
     gap: Spacing.lg,
   },
   heroCard: {
@@ -266,7 +172,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heroSalutation: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#93C5FD',
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -306,9 +212,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   workloadLabel: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#94A3B8',
+    color: '#737378',
     letterSpacing: 0.5,
   },
   workloadRow: {
@@ -323,7 +229,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   workloadUnit: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#34D399',
     fontWeight: '700',
   },
@@ -338,7 +244,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: Spacing.lg,
     borderWidth: 1.5,
-    borderColor: '#0284C7',
+    borderColor: '#0B6AA8',
     ...Shadows.sm,
     gap: 8,
   },
@@ -360,26 +266,26 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#0284C7',
+    backgroundColor: '#0B6AA8',
   },
   liveBadgeText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#0284C7',
+    color: '#0B6AA8',
   },
   liveTime: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     fontWeight: '600',
   },
   liveSubject: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   liveSection: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
   },
   broadcastBtn: {
     flexDirection: 'row',
@@ -406,13 +312,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#64748B',
+    color: '#636366',
     letterSpacing: 0.8,
   },
   viewAllText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
@@ -425,13 +331,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     ...Shadows.sm,
   },
   liveClassCard: {
-    borderColor: '#0284C7',
+    borderColor: '#0B6AA8',
     borderLeftWidth: 4,
-    borderLeftColor: '#0284C7',
+    borderLeftColor: '#0B6AA8',
     backgroundColor: '#F0F9FF',
   },
   classTimeCol: {
@@ -439,7 +345,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 1,
-    borderRightColor: '#F1F5F9',
+    borderRightColor: '#F2F2F7',
     paddingRight: 8,
   },
   classPeriod: {
@@ -448,8 +354,8 @@ const styles = StyleSheet.create({
     color: '#0B3B60',
   },
   classTime: {
-    fontSize: 10,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#737378',
     marginTop: 2,
   },
   classDetails: {
@@ -463,7 +369,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   classCode: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0B3B60',
   },
@@ -473,14 +379,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusPillText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
   },
   completedPill: {
     backgroundColor: '#ECFDF5',
   },
   completedText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
     color: '#065F46',
   },
@@ -488,22 +394,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0F2FE',
   },
   liveText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#0284C7',
+    color: '#0B6AA8',
   },
   upcomingPill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
   },
   upcomingText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#64748B',
+    color: '#636366',
   },
   className: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   classMeta: {
     flexDirection: 'row',
@@ -512,13 +418,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   classSection: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: '#48484A',
   },
   metaBullet: {
-    fontSize: 10,
-    color: '#CBD5E1',
+    fontSize: 12,
+    color: '#D1D1D6',
   },
   roomRow: {
     flexDirection: 'row',
@@ -526,8 +432,8 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   roomText: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
   },
   classActions: {
     marginTop: 8,
@@ -539,7 +445,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
@@ -553,18 +459,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 12,
     ...Shadows.sm,
   },
   alertTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   alertSub: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     marginTop: 2,
   },
   emptyCard: {
@@ -574,11 +480,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   emptyText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontWeight: '500',
   },
 });

@@ -35,8 +35,13 @@ async function main() {
 
   console.log('🌱 Starting Comprehensive JBIT Campus ERP Database Seeding...');
 
-  const seedPassword = process.env.SEED_DEFAULT_PASSWORD || 'Jbit@2026';
-  const defaultPasswordHash = await bcrypt.hash(seedPassword, 10);
+  // No built-in default: a password hard-coded here would be public knowledge for
+  // every environment ever seeded.
+  const seedPassword = process.env.SEED_DEFAULT_PASSWORD;
+  if (!seedPassword || seedPassword.length < 8) {
+    throw new Error('Set SEED_DEFAULT_PASSWORD (min 8 chars) in backend/.env before seeding demo accounts.');
+  }
+  const defaultPasswordHash = await bcrypt.hash(seedPassword, 12);
 
   // ==========================================
   // 1. DEPARTMENTS

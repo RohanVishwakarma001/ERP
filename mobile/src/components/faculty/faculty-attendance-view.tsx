@@ -1,286 +1,162 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
-import {
-  QrCode,
-  Users,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Sparkles,
-  Save,
-  CheckCheck,
-} from 'lucide-react-native';
-import { mobileFacultyService } from '@/services/mobile-services';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { Shadows, Spacing } from '@/constants/theme';
+import { QrCode, CheckCheck, Save } from 'lucide-react-native';
+import { QueryState } from '@/components/common/query-state';
+import { useRoster, useTodayClasses } from '@/features/faculty';
+import { useSubmitRoster, type AttendanceMark } from '@/features/attendance';
+import type { FacultyClassItem } from '@/types';
 
-interface StudentRosterItem {
-  id: string;
-  roll: string;
-  name: string;
-  status: 'PRESENT' | 'ABSENT' | 'LATE';
-}
+const MARKS: { mark: AttendanceMark; label: string; activeStyle: 'presentActive' | 'absentActive' | 'lateActive' }[] = [
+  { mark: 'PRESENT', label: 'P', activeStyle: 'presentActive' },
+  { mark: 'ABSENT', label: 'A', activeStyle: 'absentActive' },
+  { mark: 'LATE', label: 'L', activeStyle: 'lateActive' },
+];
 
 interface FacultyAttendanceViewProps {
-  onOpenBroadcaster: () => void;
+  onOpenBroadcaster: (classItem: FacultyClassItem) => void;
 }
 
+/** Manual roster attendance for one of today's classes (POST /attendance/batch). */
 export function FacultyAttendanceView({ onOpenBroadcaster }: FacultyAttendanceViewProps) {
-  const [selectedClass, setSelectedClass] = useState('CSE-8B');
-  const [selectedPeriod, setSelectedPeriod] = useState(2);
-  const [roster, setRoster] = useState<StudentRosterItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const classes = useTodayClasses();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Only explicit changes are stored; everyone else defaults to PRESENT.
+  const [marks, setMarks] = useState<Record<string, AttendanceMark>>({});
+  const submitRoster = useSubmitRoster();
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadRoster() {
-      setIsLoading(true);
-      try {
-        const students = await mobileFacultyService.getRosterStudents({ section: selectedClass });
-        if (isMounted) {
-          if (Array.isArray(students) && students.length > 0) {
-            setRoster(
-              students.map((s: any, idx: number) => ({
-                id: s.id,
-                roll: s.rollNumber || `22010200${idx + 1}`,
-                name: s.user?.name || s.name || `Student ${idx + 1}`,
-                status: 'PRESENT',
-              }))
-            );
-          } else {
-            setRoster([]);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load roster students', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadRoster();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedClass]);
+  const list = classes.data ?? [];
+  const selected = list.find((c) => c.id === selectedId) ?? list.find((c) => c.status === 'LIVE') ?? list[0];
+  const roster = useRoster(selected?.section);
+  const students = roster.data ?? [];
+  const markOf = (studentId: string): AttendanceMark => marks[studentId] ?? 'PRESENT';
 
-  const setStatus = (id: string, status: 'PRESENT' | 'ABSENT' | 'LATE') => {
-    setRoster((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status } : item))
-    );
+  const count = (mark: AttendanceMark) => students.filter((s) => markOf(s.id) === mark).length;
+
+  const selectClass = (id: string) => {
+    setSelectedId(id);
+    setMarks({});
   };
 
-  const handleMarkAllPresent = () => {
-    setRoster((prev) => prev.map((item) => ({ ...item, status: 'PRESENT' })));
-  };
-
-  const presentCount = roster.filter((r) => r.status === 'PRESENT').length;
-  const absentCount = roster.filter((r) => r.status === 'ABSENT').length;
-  const lateCount = roster.filter((r) => r.status === 'LATE').length;
-
-  const handleSubmitRoster = async () => {
+  const submit = () => {
+    if (!selected) return;
     Alert.alert(
-      'Submit Attendance',
-      `Confirm attendance register for ${selectedClass} (Period ${selectedPeriod})?\nPresent: ${presentCount}, Absent: ${absentCount}, Late: ${lateCount}`,
+      'Submit attendance',
+      `${selected.subjectCode} • ${selected.section} • Period ${selected.period}\nPresent ${count('PRESENT')}, Absent ${count('ABSENT')}, Late ${count('LATE')}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Lock & Submit',
-          onPress: async () => {
-            setIsSubmitting(true);
-            try {
-              await mobileFacultyService.submitRosterAttendance(
-                `class-${selectedClass}-${selectedPeriod}`,
-                roster.map((r) => ({
-                  studentId: r.id,
-                  status: r.status,
-                }))
-              );
-              Alert.alert('Success', 'Attendance locked and submitted to UTU Academic Ledger.');
-            } catch (err: any) {
-              console.error('Failed to submit roster attendance', err);
-              Alert.alert(
-                'Submission Failed',
-                err?.response?.data?.message || 'Could not save attendance. Please check your connection and try again.'
-              );
-            } finally {
-              setIsSubmitting(false);
-            }
-          },
+          text: 'Submit',
+          onPress: () =>
+            submitRoster.mutate(
+              {
+                period: { subjectCode: selected.subjectCode, section: selected.section, period: selected.period },
+                records: students.map((s) => ({ studentId: s.id, status: markOf(s.id) })),
+              },
+              { onSuccess: (res) => Alert.alert('Saved', res.message) },
+            ),
         },
-      ]
+      ],
     );
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Selector Bar */}
       <View style={styles.selectorsCard}>
-        <View style={styles.selectorRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.selectorLabel}>ACTIVE SECTION</Text>
+        <Text style={styles.selectorLabel}>TODAY&apos;S CLASSES</Text>
+        <QueryState query={classes} emptyText="You have no classes today.">
+          {(items) => (
             <View style={styles.pillGroup}>
-              {['CSE-8B', 'CSE-6A', 'CSE-4A'].map((sec) => (
-                <TouchableOpacity
-                  key={sec}
-                  style={[styles.pill, selectedClass === sec && styles.activePill]}
-                  onPress={() => setSelectedClass(sec)}
-                >
-                  <Text style={[styles.pillText, selectedClass === sec && styles.activePillText]}>
-                    {sec}
+              {items.map((c) => (
+                <TouchableOpacity key={c.id} style={[styles.pill, selected?.id === c.id && styles.activePill]} onPress={() => selectClass(c.id)}>
+                  <Text style={[styles.pillText, selected?.id === c.id && styles.activePillText]}>
+                    P{c.period} {c.subjectCode} {c.section}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          )}
+        </QueryState>
 
-          <View style={{ width: 110 }}>
-            <Text style={styles.selectorLabel}>PERIOD</Text>
-            <View style={styles.pillGroup}>
-              {[1, 2, 4].map((p) => (
-                <TouchableOpacity
-                  key={p}
-                  style={[styles.pill, selectedPeriod === p && styles.activePill]}
-                  onPress={() => setSelectedPeriod(p)}
-                >
-                  <Text style={[styles.pillText, selectedPeriod === p && styles.activePillText]}>
-                    P{p}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        {/* Dynamic QR Broadcaster Action */}
-        <TouchableOpacity
-          style={styles.qrBroadcasterBtn}
-          onPress={onOpenBroadcaster}
-          activeOpacity={0.8}
-        >
-          <QrCode size={18} color="#FFFFFF" />
-          <Text style={styles.qrBroadcasterBtnText}>Broadcast Dynamic QR for {selectedClass}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 2. Roster Statistics & Bulk Control */}
-      <View style={styles.statsCard}>
-        <View style={styles.statBox}>
-          <Text style={styles.statNum}>{presentCount}</Text>
-          <Text style={[styles.statLabel, { color: '#059669' }]}>Present</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBox}>
-          <Text style={styles.statNum}>{absentCount}</Text>
-          <Text style={[styles.statLabel, { color: '#DC2626' }]}>Absent</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBox}>
-          <Text style={styles.statNum}>{lateCount}</Text>
-          <Text style={[styles.statLabel, { color: '#D97706' }]}>Late</Text>
-        </View>
-
-        <TouchableOpacity style={styles.markAllBtn} onPress={handleMarkAllPresent}>
-          <CheckCheck size={14} color="#0B3B60" />
-          <Text style={styles.markAllBtnText}>All Present</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 3. Student Roster Roster */}
-      <View style={styles.rosterList}>
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 24 }} />
-        ) : roster.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No students enrolled in {selectedClass}.</Text>
-          </View>
-        ) : (
-          roster.map((student) => (
-            <View key={student.id} style={styles.studentCard}>
-              <View style={styles.studentInfo}>
-                <Text style={styles.studentRoll}>{student.roll}</Text>
-                <Text style={styles.studentName}>{student.name}</Text>
-              </View>
-
-              <View style={styles.togglesRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    student.status === 'PRESENT' && styles.presentActive,
-                  ]}
-                  onPress={() => setStatus(student.id, 'PRESENT')}
-                >
-                  <Text
-                    style={[
-                      styles.toggleBtnText,
-                      student.status === 'PRESENT' && styles.activeToggleText,
-                    ]}
-                  >
-                    P
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    student.status === 'ABSENT' && styles.absentActive,
-                  ]}
-                  onPress={() => setStatus(student.id, 'ABSENT')}
-                >
-                  <Text
-                    style={[
-                      styles.toggleBtnText,
-                      student.status === 'ABSENT' && styles.activeToggleText,
-                    ]}
-                  >
-                    A
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[
-                    styles.toggleBtn,
-                    student.status === 'LATE' && styles.lateActive,
-                  ]}
-                  onPress={() => setStatus(student.id, 'LATE')}
-                >
-                  <Text
-                    style={[
-                      styles.toggleBtnText,
-                      student.status === 'LATE' && styles.activeToggleText,
-                    ]}
-                  >
-                    L
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
+        {selected && (
+          <TouchableOpacity style={styles.qrBroadcasterBtn} onPress={() => onOpenBroadcaster(selected)} activeOpacity={0.8}>
+            <QrCode size={18} color="#FFFFFF" />
+            <Text style={styles.qrBroadcasterBtnText}>Broadcast QR for {selected.section}</Text>
+          </TouchableOpacity>
         )}
       </View>
 
-      {/* 4. Submit Register Button */}
-      <TouchableOpacity
-        style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]}
-        onPress={handleSubmitRoster}
-        disabled={isSubmitting || roster.length === 0}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <>
-            <Save size={18} color="#FFFFFF" />
-            <Text style={styles.submitBtnText}>Save &amp; Submit Attendance Roster</Text>
-          </>
-        )}
-      </TouchableOpacity>
+      {selected && (
+        <>
+          <View style={styles.statsCard}>
+            <View style={styles.statBox}>
+              <Text style={styles.statNum}>{count('PRESENT')}</Text>
+              <Text style={[styles.statLabel, { color: '#1F7A45' }]}>Present</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statNum}>{count('ABSENT')}</Text>
+              <Text style={[styles.statLabel, { color: '#C62828' }]}>Absent</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statNum}>{count('LATE')}</Text>
+              <Text style={[styles.statLabel, { color: '#9A5B05' }]}>Late</Text>
+            </View>
+            <TouchableOpacity style={styles.markAllBtn} onPress={() => setMarks({})}>
+              <CheckCheck size={14} color="#0B3B60" />
+              <Text style={styles.markAllBtnText}>All Present</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.rosterList}>
+            <QueryState query={roster} emptyText={`No students enrolled in ${selected.section}.`}>
+              {(list) =>
+                list.map((student) => (
+                  <View key={student.id} style={styles.studentCard}>
+                    <View style={styles.studentInfo}>
+                      <Text style={styles.studentRoll}>{student.rollNumber}</Text>
+                      <Text style={styles.studentName}>{student.name}</Text>
+                    </View>
+                    <View style={styles.togglesRow} accessibilityRole="radiogroup">
+                      {MARKS.map(({ mark, label, activeStyle }) => {
+                        const active = markOf(student.id) === mark;
+                        return (
+                          <TouchableOpacity
+                            key={mark}
+                            style={[styles.toggleBtn, active && styles[activeStyle]]}
+                            onPress={() => setMarks((prev) => ({ ...prev, [student.id]: mark }))}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: active }}
+                            accessibilityLabel={`Mark ${student.name} ${mark.toLowerCase()}`}
+                          >
+                            <Text style={[styles.toggleBtnText, active && styles.activeToggleText]}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              }
+            </QueryState>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.submitBtn, submitRoster.isPending && { opacity: 0.7 }]}
+            onPress={submit}
+            disabled={submitRoster.isPending || students.length === 0}
+          >
+            {submitRoster.isPending ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Save size={18} color="#FFFFFF" />
+                <Text style={styles.submitBtnText}>Submit Attendance</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -288,11 +164,11 @@ export function FacultyAttendanceView({ onOpenBroadcaster }: FacultyAttendanceVi
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   content: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 32,
     gap: Spacing.lg,
   },
   selectorsCard: {
@@ -300,7 +176,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 12,
     ...Shadows.sm,
   },
@@ -309,9 +185,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   selectorLabel: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#64748B',
+    color: '#636366',
     marginBottom: 6,
     letterSpacing: 0.5,
   },
@@ -320,21 +196,21 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   activePill: {
     backgroundColor: '#0B3B60',
     borderColor: '#0B3B60',
   },
   pillText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: '#48484A',
   },
   activePillText: {
     color: '#FFFFFF',
@@ -360,7 +236,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     ...Shadows.sm,
   },
   statBox: {
@@ -370,17 +246,17 @@ const styles = StyleSheet.create({
   statNum: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
   },
   statDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#E5E5EA',
   },
   markAllBtn: {
     marginLeft: 'auto',
@@ -395,7 +271,7 @@ const styles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   markAllBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
@@ -410,13 +286,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   studentInfo: {
     flex: 1,
   },
   studentRoll: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
     fontFamily: 'monospace',
@@ -424,7 +300,7 @@ const styles = StyleSheet.create({
   studentName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
     marginTop: 1,
   },
   togglesRow: {
@@ -432,19 +308,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   toggleBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#F2F2F7',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   toggleBtnText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#64748B',
+    color: '#636366',
   },
   presentActive: {
     backgroundColor: '#059669',
@@ -484,11 +360,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   emptyText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontWeight: '500',
   },
 });

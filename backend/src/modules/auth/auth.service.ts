@@ -5,11 +5,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../common/email/email.service';
+import { Prisma } from '@prisma/client';
+import { AppConfig } from '../../config';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { EmailService } from '../../infrastructure/email/email.service';
+import { maskIdentifier } from '../../common/utils/redact';
 import * as bcrypt from 'bcryptjs';
-import { randomInt } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import {
   LoginDto,
   RefreshTokenDto,
@@ -17,10 +19,30 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
+import {
+  ACCESS_TOKEN_TTL,
+  JWT_ALGORITHM,
+  BCRYPT_ROUNDS_PASSWORD,
+  BCRYPT_ROUNDS_TOKEN,
+  OTP_MAX_ATTEMPTS,
+  OTP_TTL_MS,
+  REFRESH_TOKEN_TTL,
+  REFRESH_TOKEN_TTL_MS,
+} from './auth.constants';
 
-const OTP_TTL_MS = 10 * 60 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const USER_PROFILE_INCLUDE = {
+  student: { include: { department: true } },
+  faculty: { include: { department: true } },
+} satisfies Prisma.UserInclude;
+
+type UserWithProfile = Prisma.UserGetPayload<{ include: typeof USER_PROFILE_INCLUDE }>;
+
+/**
+ * Compared against when no user matches, so a login for an unknown identifier
+ * costs the same bcrypt work as a wrong password and response timing can't be
+ * used to enumerate accounts.
+ */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-equaliser-not-a-real-password', BCRYPT_ROUNDS_PASSWORD);
 
 @Injectable()
 export class AuthService {
@@ -29,30 +51,27 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-    private configService: ConfigService,
+    private config: AppConfig,
     private emailService: EmailService,
   ) {}
 
-  private get accessSecret(): string {
-    return this.configService.getOrThrow<string>('JWT_ACCESS_SECRET');
-  }
-
-  private get refreshSecret(): string {
-    return this.configService.getOrThrow<string>('JWT_REFRESH_SECRET');
-  }
-
+  /**
+   * Identifiers arrive lower-cased (so OTPs are keyed consistently), but employee
+   * codes and enrollment numbers are stored upper-case — match case-insensitively.
+   */
   private findUserByIdentifier(identifier: string) {
+    const ci = { equals: identifier, mode: 'insensitive' as const };
     return this.prisma.user.findFirst({
       where: {
         OR: [
-          { email: identifier },
+          { email: ci },
           { phone: identifier },
-          { student: { rollNumber: identifier } },
-          { student: { enrollmentNumber: identifier } },
-          { faculty: { employeeCode: identifier } },
+          { student: { rollNumber: ci } },
+          { student: { enrollmentNumber: ci } },
+          { faculty: { employeeCode: ci } },
         ],
       },
-      include: { student: true, faculty: true },
+      include: USER_PROFILE_INCLUDE,
     });
   }
 
@@ -60,19 +79,16 @@ export class AuthService {
     const identifier = dto.identifier.trim().toLowerCase();
     const user = await this.findUserByIdentifier(identifier);
 
-    if (!user || user.status !== 'ACTIVE' || user.deletedAt) {
-      throw new UnauthorizedException('Invalid credentials.');
-    }
-
-    const isMatch = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!isMatch) {
+    // Always run one bcrypt comparison so unknown and known identifiers take the same time.
+    const isMatch = await bcrypt.compare(dto.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !isMatch || user.status !== 'ACTIVE' || user.deletedAt) {
       throw new UnauthorizedException('Invalid credentials.');
     }
 
     return this.issueSession(user);
   }
 
-  private async issueSession(user: any) {
+  private async issueSession(user: UserWithProfile) {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -82,17 +98,17 @@ export class AuthService {
       facultyId: user.faculty?.id,
     };
 
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.accessSecret,
-      expiresIn: '15m',
-    });
+    const accessToken = this.jwtService.sign(
+      { ...payload, typ: 'access' },
+      { secret: this.config.jwtAccessSecret, expiresIn: ACCESS_TOKEN_TTL, algorithm: JWT_ALGORITHM },
+    );
 
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.refreshSecret,
-      expiresIn: '7d',
-    });
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id, typ: 'refresh', jti: randomUUID() },
+      { secret: this.config.jwtRefreshSecret, expiresIn: REFRESH_TOKEN_TTL, algorithm: JWT_ALGORITHM },
+    );
 
-    const tokenHash = await bcrypt.hash(refreshToken, 10);
+    const tokenHash = await bcrypt.hash(refreshToken, BCRYPT_ROUNDS_TOKEN);
     await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
@@ -109,7 +125,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
-        department: user.student?.departmentId || user.faculty?.departmentId,
+        department: user.student?.department.name ?? user.faculty?.department.name,
         rollNumber: user.student?.rollNumber,
         semester: user.student?.semester,
         cgpa: user.student?.cgpa,
@@ -120,10 +136,16 @@ export class AuthService {
   }
 
   async refreshToken(dto: RefreshTokenDto) {
-    let payload: any;
+    let payload: { sub: string; typ?: string };
     try {
-      payload = this.jwtService.verify(dto.refreshToken, { secret: this.refreshSecret });
+      payload = this.jwtService.verify(dto.refreshToken, {
+        secret: this.config.jwtRefreshSecret,
+        algorithms: [JWT_ALGORITHM],
+      });
     } catch {
+      throw new UnauthorizedException('Invalid or expired refresh token.');
+    }
+    if (payload.typ !== undefined && payload.typ !== 'refresh') {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
 
@@ -149,7 +171,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      include: { student: true, faculty: true },
+      include: USER_PROFILE_INCLUDE,
     });
 
     if (!user || user.status !== 'ACTIVE' || user.deletedAt) {
@@ -165,9 +187,10 @@ export class AuthService {
     return this.issueSession(user);
   }
 
-  private async issueOtp(identifier: string, purpose: 'PASSWORD_RESET' | 'LOGIN_2FA') {
+  /** Stores the OTP against `identifier` (what the user will type back) and mails it to `email`. */
+  private async issueOtp(identifier: string, email: string, purpose: 'PASSWORD_RESET' | 'LOGIN_2FA') {
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    const codeHash = await bcrypt.hash(code, 10);
+    const codeHash = await bcrypt.hash(code, BCRYPT_ROUNDS_TOKEN);
 
     await this.prisma.otpToken.create({
       data: {
@@ -179,9 +202,9 @@ export class AuthService {
     });
 
     try {
-      await this.emailService.sendOtpEmail(identifier, code, purpose);
+      await this.emailService.sendOtpEmail(email, code, purpose);
     } catch {
-      this.logger.error(`Failed to deliver OTP email to ${identifier}`);
+      this.logger.error(`Failed to deliver OTP email to ${maskIdentifier(email)}`);
     }
   }
 
@@ -231,13 +254,13 @@ export class AuthService {
 
     // Always respond generically so this endpoint cannot be used to enumerate accounts.
     if (user && user.status === 'ACTIVE' && !user.deletedAt) {
-      await this.issueOtp(identifier, 'PASSWORD_RESET');
+      await this.issueOtp(identifier, user.email, 'PASSWORD_RESET');
     } else {
-      this.logger.warn(`Password reset requested for unknown/inactive identifier: ${identifier}`);
+      this.logger.warn(`Password reset requested for unknown/inactive identifier: ${maskIdentifier(identifier)}`);
     }
 
     return {
-      message: `If an account matching ${dto.identifier} exists, a verification code has been sent to its registered email.`,
+      message: 'If an account matching these details exists, a verification code has been sent to its registered email.',
     };
   }
 
@@ -246,11 +269,11 @@ export class AuthService {
     await this.consumeOtp(identifier, 'PASSWORD_RESET', dto.otp);
 
     const user = await this.findUserByIdentifier(identifier);
-    if (!user) {
-      throw new BadRequestException('Account not found.');
+    if (!user || user.status !== 'ACTIVE' || user.deletedAt) {
+      throw new BadRequestException('Unable to reset the password for this account.');
     }
 
-    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS_PASSWORD);
     await this.prisma.user.update({
       where: { id: user.id },
       data: { passwordHash },

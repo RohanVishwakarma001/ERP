@@ -1,62 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/session";
+import { NextRequest } from "next/server";
+import { REFRESH_COOKIE } from "@/lib/auth/session";
+import { isSameOriginRequest, callBackendAuth, errorResponse, sessionResponse } from "@/lib/auth/backend-session";
 
-const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-const isProd = process.env.NODE_ENV === "production";
-
-function clearSessionCookies(res: NextResponse) {
-  res.cookies.delete(ACCESS_COOKIE);
-  res.cookies.delete(REFRESH_COOKIE);
-  return res;
-}
-
-// Called on every app boot/hard-reload to silently re-derive a short-lived access
-// token (held in memory only by the client) from the httpOnly refresh-token cookie.
+/**
+ * Called on app boot and whenever an access token expires: exchanges the httpOnly
+ * refresh cookie for a fresh (rotated) token pair.
+ */
 export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req)) return errorResponse(403, "Cross-site request rejected.");
   const refreshToken = req.cookies.get(REFRESH_COOKIE)?.value;
-  if (!refreshToken) {
-    return NextResponse.json({ message: "No active session." }, { status: 401 });
-  }
+  if (!refreshToken) return errorResponse(401, "No active session.");
 
-  let backendRes: Response;
-  try {
-    backendRes = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-      cache: "no-store",
-    });
-  } catch {
-    return NextResponse.json({ message: "Unable to reach the authentication service." }, { status: 502 });
-  }
-
-  const payload = await backendRes.json().catch(() => null);
-  if (!backendRes.ok || !payload) {
-    return clearSessionCookies(NextResponse.json({ message: "Session expired." }, { status: 401 }));
-  }
-
-  const data = payload.data ?? payload;
-  const { accessToken, refreshToken: rotatedRefreshToken, user } = data ?? {};
-  if (!accessToken || !user) {
-    return clearSessionCookies(NextResponse.json({ message: "Malformed refresh response." }, { status: 502 }));
-  }
-
-  const res = NextResponse.json({ user, accessToken });
-  res.cookies.set(ACCESS_COOKIE, accessToken, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 15 * 60,
-  });
-  if (rotatedRefreshToken) {
-    res.cookies.set(REFRESH_COOKIE, rotatedRefreshToken, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60,
-    });
-  }
-  return res;
+  const result = await callBackendAuth("/auth/refresh", { refreshToken });
+  if (result.ok) return sessionResponse(result.session);
+  // An unreachable backend is not an expired session — keep the cookies so the next attempt can succeed.
+  if (result.status >= 500) return errorResponse(result.status, result.message);
+  return errorResponse(401, "Session expired.", true);
 }

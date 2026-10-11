@@ -1,181 +1,115 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import Script from "next/script";
+import { AlertCircle, CheckCircle2, CreditCard, Wallet } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Badge } from "@/components/ui/badge";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { feeService } from "@/services/domain-services";
-import { CreditCard, CheckCircle2, AlertCircle, Wallet } from "lucide-react";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionCard } from "@/components/ui/section-card";
+import { EmptyState, QueryState } from "@/components/ui/query-state";
+import { Stat, StatGrid, WelcomePanel } from "@/components/ui/welcome-panel";
+import { RAZORPAY_CHECKOUT_SRC, useMyFees, useRazorpayCheckout, type FeeStatus } from "@/features/fees";
+import { formatCurrency, formatDate } from "@/lib/format";
 
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
+const STATUS_VARIANT: Record<FeeStatus, BadgeVariant> = { PAID: "success", PARTIAL: "info", PENDING: "warning", OVERDUE: "error" };
 
 export default function StudentFeesPage() {
-  const queryClient = useQueryClient();
-  const [isRazorpayReady, setIsRazorpayReady] = useState(false);
-  const [isPaying, setIsPaying] = useState(false);
-  const [payError, setPayError] = useState<string | null>(null);
-  const [lastReceipt, setLastReceipt] = useState<string | null>(null);
-
-  const { data: fees, isLoading } = useQuery({
-    queryKey: ["myFees"],
-    queryFn: feeService.getMyFees,
-  });
-
-  const handlePayNow = async () => {
-    if (!fees?.pendingDues || fees.pendingDues <= 0) return;
-    setPayError(null);
-    setIsPaying(true);
-
-    try {
-      const order = await feeService.createOrder(fees.pendingDues);
-
-      if (!isRazorpayReady || !window.Razorpay) {
-        throw new Error("Payment gateway script has not loaded yet. Please try again in a moment.");
-      }
-
-      const rzp = new window.Razorpay({
-        key: order.keyId,
-        amount: Math.round(order.amount * 100),
-        currency: order.currency,
-        order_id: order.orderId,
-        name: "JBIT Dehradun — Campus ERP",
-        description: "Semester Fee Payment",
-        theme: { color: "#0B3B60" },
-        handler: async (response: any) => {
-          try {
-            const result = await feeService.verifyPayment({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
-            setLastReceipt(result.receiptNumber);
-            queryClient.invalidateQueries({ queryKey: ["myFees"] });
-          } catch (err: any) {
-            setPayError(err?.response?.data?.error?.message || "Payment verification failed. Contact Finance & Accounts if your account was debited.");
-          } finally {
-            setIsPaying(false);
-          }
-        },
-        modal: {
-          ondismiss: () => setIsPaying(false),
-        },
-      });
-
-      rzp.on("payment.failed", (resp: any) => {
-        setPayError(resp?.error?.description || "Payment failed. Please try again.");
-        setIsPaying(false);
-      });
-
-      rzp.open();
-    } catch (err: any) {
-      setPayError(
-        err?.response?.data?.error?.message || err.message || "Unable to start payment. The payment gateway may not be configured yet."
-      );
-      setIsPaying(false);
-    }
-  };
+  const fees = useMyFees();
+  const [scriptReady, setScriptReady] = useState(false);
+  const checkout = useRazorpayCheckout(scriptReady);
 
   return (
-    <DashboardLayout role="STUDENT">
-      <Script
-        src="https://checkout.razorpay.com/v1/checkout.js"
-        onLoad={() => setIsRazorpayReady(true)}
-      />
+    <DashboardLayout>
+      <Script src={RAZORPAY_CHECKOUT_SRC} onLoad={() => setScriptReady(true)} />
       <div className="flex flex-col gap-6 max-w-3xl mx-auto">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 font-headline">Fee Ledger &amp; Payments</h1>
-          <p className="text-xs text-slate-500 mt-1">Semester dues, payment history, and digital receipts.</p>
-        </div>
+        <PageHeader title="Fees & Payments" description="Your fee accounts, outstanding dues and payment history." />
 
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-slate-400">Loading fee ledger...</div>
-        ) : (
-          <>
-            <div className="p-6 rounded-2xl bg-[#0B3B60] text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-              <div>
-                <span className="text-[11px] uppercase font-bold text-sky-200 tracking-wider">
-                  {fees?.studentName} • Roll #{fees?.rollNumber}
-                </span>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-3xl font-bold font-tabular-nums">₹{fees?.pendingDues?.toLocaleString("en-IN") ?? 0}</span>
-                  <span className="text-xs text-sky-200">Pending Dues</span>
-                </div>
-              </div>
-              <Badge variant={fees?.clearanceStatus === "CLEARED" ? "success" : "warning"}>
-                {fees?.clearanceStatus}
-              </Badge>
-            </div>
+        <QueryState query={fees}>
+          {(f) => {
+            // Payments are applied to the earliest-due account with a balance (mirrors the backend).
+            const payable = f.accounts.find((a) => a.pendingAmount > 0);
+            return (
+              <>
+                <WelcomePanel
+                  headingLevel={2}
+                  eyebrow={`${f.studentName} · ${f.rollNumber}`}
+                  title={f.pendingDues > 0 ? formatCurrency(f.pendingDues) : "No dues"}
+                  subtitle={f.pendingDues > 0 ? `Outstanding${f.nextDueDate ? ` · next due ${formatDate(f.nextDueDate)}` : ""}` : "All fee accounts are settled."}
+                  actions={<Badge variant={f.clearanceStatus === "CLEARED" ? "success" : "warning"}>{f.clearanceStatus === "CLEARED" ? "Cleared" : "Dues pending"}</Badge>}
+                >
+                  <StatGrid columns={3}>
+                    <Stat label="Total billed" value={formatCurrency(f.totalFee)} />
+                    <Stat label="Paid" value={formatCurrency(f.paidFee)} tone="success" />
+                    <Stat label="Outstanding" value={formatCurrency(f.pendingDues)} tone={f.pendingDues > 0 ? "warning" : "default"} />
+                  </StatGrid>
+                </WelcomePanel>
 
-            {payError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{payError}</span>
-              </div>
-            )}
-
-            {lastReceipt && (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Payment successful. Receipt: {lastReceipt}</span>
-              </div>
-            )}
-
-            {fees?.pendingDues > 0 && (
-              <button
-                type="button"
-                onClick={handlePayNow}
-                disabled={isPaying}
-                className="w-full py-3.5 rounded-xl bg-[#0B3B60] hover:bg-[#082C49] text-white text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <CreditCard className="w-4 h-4" />
-                {isPaying ? "Processing..." : `Pay ₹${fees.pendingDues.toLocaleString("en-IN")} Now`}
-              </button>
-            )}
-
-            <div className="space-y-3">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Fee Breakdown</h2>
-              <div className="rounded-xl border border-[#E2E8F0] bg-white divide-y divide-[#F1F5F9]">
-                {fees?.breakdown?.map((item: any, idx: number) => (
-                  <div key={idx} className="p-4 flex items-center justify-between text-sm">
-                    <span className="text-slate-700">{item.title}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-tabular-nums font-semibold">₹{item.amount?.toLocaleString("en-IN")}</span>
-                      <Badge variant={item.status === "PAID" ? "success" : "warning"}>{item.status}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <Wallet className="w-4 h-4" /> Payment History
-              </h2>
-              <div className="rounded-xl border border-[#E2E8F0] bg-white divide-y divide-[#F1F5F9]">
-                {fees?.recentTransactions?.length ? (
-                  fees.recentTransactions.map((txn: any) => (
-                    <div key={txn.id} className="p-4 flex items-center justify-between text-xs">
-                      <div>
-                        <p className="font-semibold text-slate-800">{txn.receiptNumber}</p>
-                        <p className="text-slate-500">{txn.date} • {txn.mode}</p>
-                      </div>
-                      <span className="font-tabular-nums font-bold text-emerald-600">
-                        ₹{txn.amount?.toLocaleString("en-IN")}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-xs text-slate-400">No payment history yet.</div>
+                {checkout.error && (
+                  <p role="alert" className="p-4 bg-red-50 rounded-xl text-sm text-red-900 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" /> {checkout.error}
+                  </p>
                 )}
-              </div>
-            </div>
-          </>
-        )}
+                {checkout.receiptNumber && (
+                  <p role="status" className="p-4 bg-emerald-50 rounded-xl text-sm text-emerald-900 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" /> Payment successful. Receipt {checkout.receiptNumber}
+                  </p>
+                )}
+
+                {payable && (
+                  <Button size="lg" className="w-full" icon={<CreditCard className="w-4 h-4" />} loading={checkout.isPaying} onClick={() => checkout.pay(payable.pendingAmount)}>
+                    Pay {formatCurrency(payable.pendingAmount)} for Semester {payable.semester}
+                  </Button>
+                )}
+
+                {f.accounts.map((a) => (
+                  <SectionCard
+                    key={a.id}
+                    title={`Semester ${a.semester} · ${a.academicYear}`}
+                    subtitle={`Due ${formatDate(a.dueDate)}`}
+                    action={<Badge variant={STATUS_VARIANT[a.status]}>{a.status}</Badge>}
+                  >
+                    <div className="divide-y divide-surface-subtle text-sm">
+                      {a.breakdown.map((line) => (
+                        <div key={line.title} className="py-2 flex items-center justify-between">
+                          <span className="text-slate-700">{line.title}</span>
+                          <span className="font-tabular-nums font-semibold">{formatCurrency(line.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="py-2 flex items-center justify-between text-xs text-slate-500">
+                        <span>
+                          Paid {formatCurrency(a.paidAmount)} of {formatCurrency(a.totalAmount)}
+                        </span>
+                        <span className="font-semibold text-slate-800">Balance {formatCurrency(a.pendingAmount)}</span>
+                      </div>
+                    </div>
+                  </SectionCard>
+                ))}
+
+                <SectionCard title="Payment history" icon={<Wallet className="w-5 h-5" />}>
+                  {f.recentTransactions.length === 0 ? (
+                    <EmptyState compact icon={<Wallet />} title="No payments yet" />
+                  ) : (
+                    <div className="divide-y divide-surface-subtle">
+                      {f.recentTransactions.map((t) => (
+                        <div key={t.id} className="py-3 flex items-center justify-between gap-3 text-sm">
+                          <div>
+                            <p className="font-semibold text-slate-800">{t.receiptNumber ?? "—"}</p>
+                            <p className="text-slate-500">
+                              {formatDate(t.date)} · {t.mode}
+                            </p>
+                          </div>
+                          <span className="font-tabular-nums font-semibold text-slate-900">{formatCurrency(t.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </SectionCard>
+              </>
+            );
+          }}
+        </QueryState>
       </div>
     </DashboardLayout>
   );

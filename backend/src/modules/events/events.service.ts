@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 const MOCK_EVENTS = [
   {
@@ -34,7 +34,7 @@ export class EventsService {
     return MOCK_EVENTS;
   }
 
-  async registerTeam(eventId: string, teamData: any) {
+  async registerTeam(eventId: string, teamData: { teamName: string; members?: string[] }) {
     return {
       success: true,
       message: 'Team registration confirmed for event.',

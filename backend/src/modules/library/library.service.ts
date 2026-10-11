@@ -1,183 +1,139 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-const MOCK_BOOKS = [
-  {
-    id: 'bk-01',
-    accessionNumber: '978-0131103627',
-    isbn: '978-0131103627',
-    title: 'The C Programming Language',
-    author: 'Brian W. Kernighan, Dennis M. Ritchie',
-    authors: ['Brian W. Kernighan', 'Dennis M. Ritchie'],
-    department: 'Computer Science',
-    category: 'Computer Science',
-    edition: '2nd Edition',
-    shelfLocation: 'Rack-A-01',
-    totalCopies: 8,
-    availableCopies: 7,
-  },
-  {
-    id: 'bk-02',
-    accessionNumber: '978-0321486813',
-    isbn: '978-0321486813',
-    title: 'Compilers: Principles, Techniques, & Tools (Dragon Book)',
-    author: 'Alfred V. Aho, Monica S. Lam, Ravi Sethi',
-    authors: ['Alfred V. Aho', 'Monica S. Lam', 'Ravi Sethi'],
-    department: 'Computer Science',
-    category: 'Computer Science',
-    edition: '2nd Edition',
-    shelfLocation: 'Rack-B-04',
-    totalCopies: 6,
-    availableCopies: 5,
-  },
-  {
-    id: 'bk-03',
-    accessionNumber: '978-0133594140',
-    isbn: '978-0133594140',
-    title: 'Cloud Computing: Concepts, Technology & Architecture',
-    author: 'Thomas Erl, Ricardo Puttini',
-    authors: ['Thomas Erl', 'Ricardo Puttini'],
-    department: 'DevOps & Cloud',
-    category: 'DevOps & Cloud',
-    edition: '1st Edition',
-    shelfLocation: 'Rack-C-02',
-    totalCopies: 5,
-    availableCopies: 4,
-  },
-  {
-    id: 'bk-04',
-    accessionNumber: '978-0132856201',
-    isbn: '978-0132856201',
-    title: 'Computer Networking: A Top-Down Approach',
-    author: 'James F. Kurose, Keith W. Ross',
-    authors: ['James F. Kurose', 'Keith W. Ross'],
-    department: 'Networks',
-    category: 'Networks',
-    edition: '7th Edition',
-    shelfLocation: 'Rack-A-03',
-    totalCopies: 10,
-    availableCopies: 9,
-  },
-];
+/** Circulation policy. */
+export const LOAN_PERIOD_DAYS = 14;
+export const FINE_PER_OVERDUE_DAY = 2; // INR
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+export function overdueDays(dueDate: Date, asOf = new Date()): number {
+  return Math.max(0, Math.ceil((asOf.getTime() - dueDate.getTime()) / DAY_MS));
+}
 
 @Injectable()
 export class LibraryService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(query?: { search?: string }) {
-    if (this.prisma.isConnected) {
-      try {
-        const whereClause: any = {};
-        if (query?.search) {
-          whereClause.OR = [
-            { title: { contains: query.search, mode: 'insensitive' } },
-            { author: { contains: query.search, mode: 'insensitive' } },
-            { isbn: { contains: query.search, mode: 'insensitive' } },
-          ];
+  async findAll(search?: string) {
+    const where: Prisma.BookWhereInput = search
+      ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { author: { contains: search, mode: 'insensitive' } },
+            { isbn: { contains: search } },
+          ],
         }
+      : {};
 
-        const books = await this.prisma.book.findMany({
-          where: whereClause,
-          include: { copies: true },
-          orderBy: { title: 'asc' },
-        });
-
-        if (books && books.length > 0) {
-          return books.map((b) => ({
-            id: b.id,
-            accessionNumber: b.isbn,
-            isbn: b.isbn,
-            title: b.title,
-            author: b.author,
-            authors: b.author.split(',').map((a) => a.trim()),
-            department: b.category,
-            category: b.category,
-            edition: 'AICTE Recommended Reference Edition',
-            shelfLocation: b.shelfLocation || 'Rack B-04',
-            totalCopies: b.totalCopies,
-            availableCopies: b.availableCopies,
-          }));
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    let books = MOCK_BOOKS;
-    if (query?.search) {
-      const q = query.search.toLowerCase();
-      books = books.filter(
-        (b) =>
-          b.title.toLowerCase().includes(q) ||
-          b.author.toLowerCase().includes(q) ||
-          b.isbn.includes(q),
-      );
-    }
-    return books;
+    const books = await this.prisma.book.findMany({ where, orderBy: { title: 'asc' } });
+    return books.map((b) => ({
+      id: b.id,
+      isbn: b.isbn,
+      title: b.title,
+      authors: b.author.split(',').map((a) => a.trim()),
+      publisher: b.publisher,
+      category: b.category,
+      shelfLocation: b.shelfLocation,
+      totalCopies: b.totalCopies,
+      availableCopies: b.availableCopies,
+    }));
   }
 
   async getMyIssuedBooks(studentId: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const issues = await this.prisma.bookIssue.findMany({
-          where: {
-            OR: [
-              { studentId },
-              { student: { rollNumber: studentId } },
-              { student: { user: { email: studentId } } },
-            ],
-            isReturned: false,
-          },
-          include: {
-            bookCopy: { include: { book: true } },
-          },
-        });
+    const issues = await this.prisma.bookIssue.findMany({
+      where: { studentId, isReturned: false },
+      include: { bookCopy: { include: { book: true } } },
+      orderBy: { dueDate: 'asc' },
+    });
 
-        if (issues && issues.length > 0) {
-          return issues.map((iss) => ({
-            id: iss.id,
-            bookTitle: iss.bookCopy.book.title,
-            author: iss.bookCopy.book.author,
-            barcode: iss.bookCopy.barcode,
-            issueDate: iss.issueDate.toISOString().split('T')[0],
-            dueDate: iss.dueDate.toISOString().split('T')[0],
-            overdueDays: Math.max(0, Math.ceil((Date.now() - iss.dueDate.getTime()) / 86400000)),
-            fineAmount: iss.fineAmount,
-            status: 'BORROWED',
-          }));
-        }
-      } catch {
-        // Fallback
-      }
-    }
+    return issues.map((issue) => {
+      const late = overdueDays(issue.dueDate);
+      return {
+        id: issue.id,
+        bookTitle: issue.bookCopy.book.title,
+        author: issue.bookCopy.book.author,
+        barcode: issue.bookCopy.barcode,
+        issueDate: toIsoDate(issue.issueDate),
+        dueDate: toIsoDate(issue.dueDate),
+        overdueDays: late,
+        accruedFine: late * FINE_PER_OVERDUE_DAY,
+      };
+    });
+  }
 
-    return [
-      {
-        id: 'iss-01',
-        bookTitle: 'Compilers: Principles, Techniques, & Tools (Dragon Book)',
-        author: 'Alfred V. Aho, Monica S. Lam, Ravi Sethi',
-        barcode: 'RFID-JBIT-6813-01',
-        issueDate: '2026-05-17',
-        dueDate: '2026-05-31',
-        overdueDays: 0,
-        fineAmount: 0,
-        status: 'BORROWED',
+  /** Librarian desk: every book currently out on loan, most overdue first. */
+  async listActiveIssues() {
+    const issues = await this.prisma.bookIssue.findMany({
+      where: { isReturned: false },
+      include: {
+        bookCopy: { include: { book: { select: { title: true, isbn: true } } } },
+        student: { select: { rollNumber: true, user: { select: { name: true } } } },
       },
-    ];
+      orderBy: { dueDate: 'asc' },
+    });
+
+    return issues.map((issue) => {
+      const late = overdueDays(issue.dueDate);
+      return {
+        id: issue.id,
+        bookTitle: issue.bookCopy.book.title,
+        isbn: issue.bookCopy.book.isbn,
+        barcode: issue.bookCopy.barcode,
+        studentName: issue.student.user.name,
+        rollNumber: issue.student.rollNumber,
+        issueDate: toIsoDate(issue.issueDate),
+        dueDate: toIsoDate(issue.dueDate),
+        overdueDays: late,
+        accruedFine: late * FINE_PER_OVERDUE_DAY,
+      };
+    });
   }
 
+  /** Checks out any available copy of the book to the student. */
   async issueBook(studentId: string, bookId: string) {
-    return {
-      success: true,
-      message: 'Book issued successfully with RFID checkout.',
-      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    };
+    const student = await this.prisma.student.findUnique({ where: { id: studentId }, select: { id: true } });
+    if (!student) throw new NotFoundException('Student not found.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const copy = await tx.bookCopy.findFirst({ where: { bookId, isAvailable: true }, include: { book: true } });
+      if (!copy) throw new ConflictException('No copies of this book are currently available.');
+
+      // Conditional update guards against two librarians issuing the same copy concurrently.
+      const claimed = await tx.bookCopy.updateMany({ where: { id: copy.id, isAvailable: true }, data: { isAvailable: false } });
+      if (claimed.count === 0) throw new ConflictException('That copy was just issued. Please retry.');
+
+      await tx.book.update({ where: { id: bookId }, data: { availableCopies: { decrement: 1 } } });
+      const issue = await tx.bookIssue.create({
+        data: { bookCopyId: copy.id, studentId, dueDate: new Date(Date.now() + LOAN_PERIOD_DAYS * DAY_MS) },
+      });
+
+      return {
+        issueId: issue.id,
+        bookTitle: copy.book.title,
+        barcode: copy.barcode,
+        dueDate: toIsoDate(issue.dueDate),
+      };
+    });
   }
 
+  /** Returns a copy and records any overdue fine. */
   async returnBook(issueId: string) {
-    return {
-      success: true,
-      message: 'Book returned to inventory. Fine cleared: INR 0.',
-    };
+    return this.prisma.$transaction(async (tx) => {
+      const issue = await tx.bookIssue.findUnique({ where: { id: issueId }, include: { bookCopy: true } });
+      if (!issue) throw new NotFoundException('Issue record not found.');
+      if (issue.isReturned) throw new BadRequestException('This book has already been returned.');
+
+      const now = new Date();
+      const fineAmount = overdueDays(issue.dueDate, now) * FINE_PER_OVERDUE_DAY;
+
+      await tx.bookIssue.update({ where: { id: issueId }, data: { isReturned: true, returnDate: now, fineAmount } });
+      await tx.bookCopy.update({ where: { id: issue.bookCopyId }, data: { isAvailable: true } });
+      await tx.book.update({ where: { id: issue.bookCopy.bookId }, data: { availableCopies: { increment: 1 } } });
+
+      return { issueId, returnedAt: now.toISOString(), fineAmount };
+    });
   }
 }

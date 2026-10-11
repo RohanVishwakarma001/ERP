@@ -8,9 +8,23 @@ export interface RoleConfig {
   badgeColor: string;
 }
 
+/** Roles with unrestricted access to every area of the web app. */
+export const ADMIN_ROLES: readonly UserRole[] = ["SUPER_ADMIN", "ADMIN"];
+
+export function isAdminRole(role: UserRole | undefined): boolean {
+  return role !== undefined && ADMIN_ROLES.includes(role);
+}
+
 export const ROLES_CONFIG: Record<UserRole, RoleConfig> = {
+  SUPER_ADMIN: {
+    label: "Super Admin",
+    description: "Unrestricted system administration",
+    defaultPath: "/admin/dashboard",
+    allowedPrefixes: ["/"],
+    badgeColor: "bg-primary text-on-primary",
+  },
   ADMIN: {
-    label: "Super Admin / Dean",
+    label: "Administrator / Dean",
     description: "Full institutional governance, departments, timetable, exams, placement & settings",
     defaultPath: "/admin/dashboard",
     allowedPrefixes: ["/admin"],

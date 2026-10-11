@@ -1,5 +1,3 @@
-import HostelDashboardPage from "@/app/hostel/dashboard/page";
+import { HostelScreen } from "@/components/screens/hostel-screen";
 
-export default function AdminHostelPage() {
-  return <HostelDashboardPage />;
-}
+export default HostelScreen;

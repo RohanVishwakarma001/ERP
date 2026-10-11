@@ -1,118 +1,76 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { Logger, ValidationPipe, INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { AppModule } from './app.module';
+import { AppConfig, corsOriginCheck } from './config';
 import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
+export const API_PREFIX = 'api/v1';
+
+function setupSwagger(app: INestApplication) {
+  const config = new DocumentBuilder()
+    .setTitle('JBIT Dehradun — Campus ERP API')
+    .setDescription('REST and WebSocket API powering the JBIT Campus ERP web and mobile clients.')
+    .setVersion('1.0.0')
+    .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT', in: 'header' }, 'JWT-auth')
+    .build();
+
+  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, config), {
+    customSiteTitle: 'JBIT ERP — API Documentation',
+    swaggerOptions: { persistAuthorization: true },
+  });
+}
+
 async function bootstrap() {
-  const logger = new Logger('JBIT-Bootstrap');
-  // rawBody is required to verify Razorpay's webhook HMAC signature, which must be
-  // computed over the exact unparsed request bytes.
-  const app = await NestFactory.create(AppModule, { rawBody: true });
-  const isProduction = process.env.NODE_ENV === 'production';
+  const logger = new Logger('Bootstrap');
+  // rawBody is required to verify Razorpay's webhook HMAC over the exact request bytes.
+  // bodyParser is re-registered below with explicit size limits.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true, bodyParser: false });
+  const config = app.get(AppConfig);
 
-  app.use(helmet());
+  // Cap request bodies so a single request can't exhaust memory. File uploads are
+  // multipart and bounded separately by multer in UploadsController.
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
 
-  // Global API Prefix
-  app.setGlobalPrefix('api/v1');
+  // Behind a reverse proxy, trust exactly that many hops so rate limiting keys on the
+  // real client IP — never `true`, which would let clients spoof X-Forwarded-For.
+  if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy);
+  app.disable('x-powered-by');
 
-  // CORS Configuration — strict allowlist, no wildcard fallback.
-  const allowedOrigins = new Set(
-    [process.env.WEB_URL, ...(process.env.CORS_ORIGINS?.split(',') ?? [])]
-      .map((o) => o?.trim())
-      .filter((o): o is string => Boolean(o)),
+  app.use(
+    helmet({
+      // JSON API: nothing should ever render or frame its responses. Swagger UI (non-prod
+      // by default) needs inline scripts/styles, so the strict CSP applies when it's off.
+      contentSecurityPolicy: config.swaggerEnabled
+        ? undefined
+        : { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'none'"], formAction: ["'none'"] } },
+      crossOriginResourcePolicy: { policy: 'same-site' },
+      hsts: config.isProduction ? { maxAge: 31_536_000, includeSubDomains: true } : false,
+    }),
   );
-
-  if (!isProduction) {
-    allowedOrigins.add('http://localhost:3000');
-    allowedOrigins.add('http://127.0.0.1:3000');
-  }
-
+  app.setGlobalPrefix(API_PREFIX);
   app.enableCors({
-    origin: (origin, callback) => {
-      // In development mode, permit all origins (including Expo Go, local IP, Metro bundler, emulators)
-      if (!isProduction) {
-        return callback(null, true);
-      }
-      // Requests with no Origin header (native mobile apps, curl, server-to-server) are allowed;
-      // browser-origin requests must match the configured allowlist exactly.
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`Origin ${origin} is not permitted by CORS policy.`), false);
-      }
-    },
+    origin: corsOriginCheck,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Accept, Authorization, X-Client-Platform, X-Requested-With',
   });
 
-  // Global Pipes, Filters, and Interceptors
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-
-  app.useGlobalFilters(new GlobalHttpExceptionFilter());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }));
+  app.useGlobalFilters(new GlobalHttpExceptionFilter(config.isProduction));
   app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
+  app.enableShutdownHooks();
 
-  // Swagger OpenAPI Documentation — never exposed in production unless explicitly opted in.
-  const swaggerEnabled = !isProduction || process.env.ENABLE_SWAGGER === 'true';
-  if (swaggerEnabled) {
-  const config = new DocumentBuilder()
-    .setTitle('JBIT Dehradun — Campus ERP Ecosystem API')
-    .setDescription(
-      'Production-grade RESTful and WebSocket API powering the Next.js Web ERP, Student Mobile App, and Faculty Mobile Hub for JB Institute of Technology, Dehradun (Affiliated to UTU / SDSUV / UBTER, Approved by AICTE).',
-    )
-    .setVersion('1.0.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter institutional JWT Access Token',
-        in: 'header',
-      },
-      'JWT-auth',
-    )
-    .addTag('Authentication & Identity', 'SSO, login, OTP verification, and role session management')
-    .addTag('Students & Debarment Management', 'Student records, KYC, and UTU Ordinance 14(B) debarment')
-    .addTag('Faculty Academic Hub', 'Faculty cadre, teaching workloads, and AICTE compliance')
-    .addTag('Attendance & QR Hub', 'Geofenced rotating QR attendance, bulk roster marking, and statutory 75% calculation')
-    .addTag('Timetable Engine', 'Automated clash-detection scheduling for rooms, labs, and faculty')
-    .addTag('Examinations & Seating Matrix', 'UTU seating matrix generation, mark locking, and SGPA/CGPA engine')
-    .addTag('Fee Ledger & Payment Gateway', 'Semester fee structures, Razorpay orders, webhooks, and receipts')
-    .addTag('Training & Placement Cell (TPO)', 'Corporate recruitment drives, eligibility rules, and LOI signing')
-    .addTag('JBIT AI Campus Copilot', 'Grounded conversational academic assistant')
-    .addTag('System Health', 'API operational status, database connectivity, and cloud node metrics')
-    .build();
+  if (config.swaggerEnabled) setupSwagger(app);
 
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document, {
-      customSiteTitle: 'JBIT ERP — API Documentation',
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    });
-  }
-
-  const port = process.env.PORT || 8000;
-  await app.listen(port, '0.0.0.0');
-
-  logger.log(`==================================================================`);
-  logger.log(`🎓 JBIT Campus ERP Backend Server started successfully on port ${port}`);
-  logger.log(`📡 API Base URL:       http://localhost:${port}/api/v1`);
-  if (swaggerEnabled) {
-    logger.log(`📚 Swagger OpenAPI UI: http://localhost:${port}/api/docs`);
-  }
-  logger.log(`==================================================================`);
+  await app.listen(config.port, '0.0.0.0');
+  logger.log(`API listening on http://localhost:${config.port}/${API_PREFIX} (${config.nodeEnv})`);
+  if (config.swaggerEnabled) logger.log(`Swagger UI: http://localhost:${config.port}/api/docs`);
 }
 
 bootstrap();

@@ -1,32 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-const MOCK_AUDIT_LOGS = [
-  {
-    id: 'aud-01',
-    user: 'Dr. V. K. Bhatt (HOD CSE)',
-    action: 'LOCK_ATTENDANCE_SESSION',
-    entity: 'AttendanceSession',
-    entityId: 'sess-20260522-P2',
-    timestamp: '2026-05-22T11:18:00Z',
-    ipAddress: '192.168.10.45 (Campus Wi-Fi Block B)',
-  },
-  {
-    id: 'aud-02',
-    user: 'Col. Rajesh Verma (Registrar)',
-    action: 'PUBLISH_CIRCULAR',
-    entity: 'Notice',
-    entityId: 'not-01',
-    timestamp: '2026-05-24T09:00:00Z',
-    ipAddress: '192.168.1.10 (Admin Block Node)',
-  },
-];
+const AUDIT_PAGE_SIZE = 200;
 
 @Injectable()
 export class AuditService {
   constructor(private prisma: PrismaService) {}
 
   async findAll() {
-    return MOCK_AUDIT_LOGS;
+    const logs = await this.prisma.auditLog.findMany({
+      include: { user: { select: { name: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: AUDIT_PAGE_SIZE,
+    });
+    return logs.map((l) => ({
+      id: l.id,
+      user: l.user ? `${l.user.name} (${l.user.role})` : null,
+      action: l.action,
+      entity: l.entity,
+      entityId: l.entityId,
+      ipAddress: l.ipAddress,
+      timestamp: l.createdAt.toISOString(),
+    }));
   }
 }

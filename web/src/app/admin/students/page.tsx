@@ -1,78 +1,72 @@
 "use client";
 
-import React, { useState } from "react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, Ban, CheckCircle2, Eye, FileDown, Gavel, Users } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, Column } from "@/components/ui/data-table";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { studentService } from "@/services/domain-services";
-import { Student } from "@/types";
-import {
-  Users,
-  CheckCircle2,
-  AlertTriangle,
-  Ban,
-  FileDown,
-  UserPlus,
-  ShieldAlert,
-  Gavel,
-  Ticket,
-  Eye,
-  Check,
-  X,
-} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog, Modal } from "@/components/ui/modal";
+import { PageHeader } from "@/components/ui/page-header";
+import { ProgressBar, TONE_TEXT } from "@/components/ui/progress-bar";
+import { SelectInput } from "@/components/ui/form-field";
+import { ErrorState } from "@/components/ui/query-state";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { useStudents, useUpdateDebarment, type DebarmentStatus, type Student } from "@/features/students";
+import { ATTENDANCE_THRESHOLD, CONDONATION_FLOOR, attendanceBand, attendanceTone } from "@/features/attendance";
+import { formatPercent, initials, ratio } from "@/lib/format";
+import { toast } from "@/lib/toast-store";
+
+type Filter = "ALL" | "ELIGIBLE" | "CONDONATION" | "DEBARRED";
+
+function matchesFilter(s: Student, filter: Filter) {
+  if (filter === "ALL") return true;
+  if (filter === "CONDONATION") return attendanceBand(s.attendancePercent) === "condonation";
+  return s.debarmentStatus === filter;
+}
 
 export default function StudentRosterPage() {
-  const queryClient = useQueryClient();
-  const [selectedDebarmentFilter, setSelectedDebarmentFilter] = useState<string>("ALL");
-  const [selectedStudentForReview, setSelectedStudentForReview] = useState<Student | null>(null);
+  const students = useStudents();
+  const updateDebarment = useUpdateDebarment();
+  const [filter, setFilter] = useState<Filter>("ALL");
+  const [reviewing, setReviewing] = useState<Student | null>(null);
+  const [confirmingDebar, setConfirmingDebar] = useState(false);
 
-  const { data: students = [], isLoading } = useQuery({
-    queryKey: ["students"],
-    queryFn: studentService.getStudents,
-  });
+  const list = useMemo(() => students.data ?? [], [students.data]);
+  const counts = useMemo(
+    () => ({
+      safe: list.filter((s) => attendanceBand(s.attendancePercent) === "safe").length,
+      condonation: list.filter((s) => attendanceBand(s.attendancePercent) === "condonation").length,
+      debarred: list.filter((s) => s.isDebarred).length,
+    }),
+    [list],
+  );
 
-  const [bulkReleaseFeedback, setBulkReleaseFeedback] = useState<string | null>(null);
-  const totalStudents = students.length;
-  const eligibleStudents = students.filter((s) => s.attendancePercent >= 75);
-  const atRiskStudents = students.filter((s) => s.attendancePercent >= 65 && s.attendancePercent < 75);
-  const debarredStudents = students.filter((s) => s.attendancePercent < 65 || s.debarmentStatus === "DEBARRED");
-
-  const toggleHallTicketMutation = useMutation({
-    mutationFn: studentService.toggleHallTicket,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students"] });
-    },
-  });
-
-  const updateDebarmentMutation = useMutation({
-    mutationFn: ({ studentId, status }: { studentId: string; status: Student["debarmentStatus"] }) =>
-      studentService.updateDebarmentStatus(studentId, status),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students"] });
-      setSelectedStudentForReview(null);
-    },
-  });
-
-  const filteredStudents = students.filter((s) => {
-    if (selectedDebarmentFilter === "ALL") return true;
-    return s.debarmentStatus === selectedDebarmentFilter;
-  });
+  const decide = (student: Student, status: DebarmentStatus) =>
+    updateDebarment.mutate(
+      { studentId: student.id, status },
+      {
+        onSuccess: () => {
+          toast.success(status === "DEBARRED" ? `${student.name} debarred; hall ticket withheld.` : `Condonation approved for ${student.name}.`);
+          setConfirmingDebar(false);
+          setReviewing(null);
+        },
+      },
+    );
 
   const columns: Column<Student>[] = [
     {
-      header: "Student & Roll Number",
+      header: "Student",
       accessorKey: "name",
       sortable: true,
       cell: (s) => (
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[#0B3B60] text-white flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden ring-1 ring-slate-200">
-            {s.name.charAt(0)}
+          <div className="w-8 h-8 rounded-full bg-primary-container text-white flex items-center justify-center font-semibold text-xs shrink-0">
+            {initials(s.name)}
           </div>
           <div>
             <span className="font-semibold text-slate-900 block leading-tight">{s.name}</span>
-            <span className="text-[11px] text-slate-500 font-mono">Roll: #{s.rollNumber}</span>
+            <span className="text-xs text-slate-500 font-mono">#{s.rollNumber}</span>
           </div>
         </div>
       ),
@@ -84,290 +78,183 @@ export default function StudentRosterPage() {
       cell: (s) => (
         <div>
           <span className="font-medium text-slate-800 block leading-tight">{s.program}</span>
-          <span className="text-[11px] text-slate-500">Sem {s.semester} • Sec {s.section}</span>
+          <span className="text-xs text-slate-500">
+            Sem {s.semester} · {s.section ?? "No section"}
+          </span>
         </div>
       ),
     },
     {
-      header: "Attendance % (Ord 14B)",
+      header: "Attendance",
       accessorKey: "attendancePercent",
       sortable: true,
-      cell: (s) => {
-        const isCritical = s.attendancePercent < 65;
-        const isWarning = s.attendancePercent >= 65 && s.attendancePercent < 75;
-        return (
-          <div>
-            <div className="flex items-baseline gap-1.5">
-              <span
-                className={`font-bold font-tabular-nums text-sm ${
-                  isCritical ? "text-red-600" : isWarning ? "text-amber-600" : "text-emerald-700"
-                }`}
-              >
-                {s.attendancePercent}%
-              </span>
-              <span className="text-[10px] text-slate-400">
-                ({s.attendedClasses}/{s.conductedClasses})
-              </span>
-            </div>
-            <div className="w-20 h-1.5 rounded-full bg-slate-200 overflow-hidden mt-1">
-              <div
-                className={`h-full rounded-full ${
-                  isCritical ? "bg-red-500" : isWarning ? "bg-amber-500" : "bg-emerald-500"
-                }`}
-                style={{ width: `${s.attendancePercent}%` }}
-              />
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      header: "Debarment Status",
-      accessorKey: "debarmentStatus",
-      sortable: true,
-      cell: (s) => {
-        if (s.debarmentStatus === "ELIGIBLE") {
-          return <Badge variant="success">Eligible</Badge>;
-        }
-        if (s.debarmentStatus === "CONDONATION") {
-          return (
-            <Badge variant="warning" pulse>
-              At-Risk • Condonation
-            </Badge>
-          );
-        }
-        return <Badge variant="error">Debarred &lt;65%</Badge>;
-      },
-    },
-    {
-      header: "Hall Ticket",
-      accessorKey: "hallTicketStatus",
-      sortable: true,
       cell: (s) => (
-        <button
-          type="button"
-          onClick={() => toggleHallTicketMutation.mutate(s.id)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-            s.hallTicketStatus === "RELEASED"
-              ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-              : "bg-red-100 text-red-800 hover:bg-red-200"
-          }`}
-          title="Click to toggle admit card status"
-        >
-          <Ticket className="w-3 h-3" />
-          <span>{s.hallTicketStatus === "RELEASED" ? "Released" : "Withheld"}</span>
-        </button>
+        <div className="w-28">
+          <div className="flex items-baseline gap-1.5">
+            <span className={`font-semibold font-tabular-nums text-sm ${TONE_TEXT[attendanceTone(s.attendancePercent)]}`}>
+              {formatPercent(s.attendancePercent)}
+            </span>
+            <span className="text-xs text-slate-400">
+              ({s.attendedClasses}/{s.conductedClasses})
+            </span>
+          </div>
+          <ProgressBar value={s.attendancePercent} tone={attendanceTone(s.attendancePercent)} className="mt-1" />
+        </div>
       ),
     },
     {
-      header: "Actions",
+      header: "Status",
+      accessorKey: "debarmentStatus",
+      sortable: true,
+      cell: (s) =>
+        s.isDebarred ? (
+          <Badge variant="error">Debarred · hall ticket withheld</Badge>
+        ) : attendanceBand(s.attendancePercent) === "condonation" ? (
+          <Badge variant="warning">Condoned</Badge>
+        ) : (
+          <Badge variant="success">Eligible</Badge>
+        ),
+    },
+    {
+      header: "",
       cell: (s) => (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setSelectedStudentForReview(s)}
-            className="p-1.5 rounded-lg border border-[#E2E8F0] hover:bg-slate-100 text-slate-600 transition-colors"
-            title="Review attendance condonation petition"
-          >
-            <Eye className="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <Button size="sm" variant="secondary" icon={<Eye className="w-4 h-4" />} onClick={() => setReviewing(s)} aria-label={`Review debarment for ${s.name}`}>
+          Review
+        </Button>
       ),
     },
   ];
 
   return (
-    <DashboardLayout role="ADMIN">
+    <DashboardLayout>
       <div className="flex flex-col gap-6">
-        {/* Page Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Academic Affairs</span>
-              <span className="text-slate-300">/</span>
-              <span>Student Administration</span>
-              <span className="text-slate-300">/</span>
-              <span className="text-[#0B3B60]">Debarment Registry</span>
-            </div>
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-headline">
-                Student Roster &amp; UTU Attendance Debarment Registry
-              </h1>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#0B3B60]/10 text-[#0B3B60] text-xs font-semibold">
-                <Gavel className="w-3.5 h-3.5" />
-                Ordinance 14(B) Enforcement Active
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5 max-w-4xl">
-              Manage enrolled student records, monitor live 75% attendance ordinance thresholds, process medical &amp; OD condonation petitions, and issue or withhold semester examination hall tickets in real time.
-            </p>
-          </div>
+        <PageHeader
+          breadcrumbs={["Academic Affairs", "Students", "Debarment Registry"]}
+          title="Student Roster & Debarment Registry"
+          badge={
+            <Badge variant="primary">
+              <Gavel className="w-3.5 h-3.5" /> Ordinance 14(B)
+            </Badge>
+          }
+          description={`Students below ${ATTENDANCE_THRESHOLD}% attendance are debarred and their hall tickets withheld. Between ${CONDONATION_FLOOR}% and ${ATTENDANCE_THRESHOLD}%, the Dean may approve condonation on a valid medical or on-duty certificate.`}
+          actions={
+            <Button variant="secondary" icon={<FileDown className="w-4 h-4" />} onClick={() => window.print()}>
+              Print Roster
+            </Button>
+          }
+        />
 
-          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E2E8F0] bg-white text-slate-700 hover:bg-[#F8FAFC] text-xs font-semibold shadow-2xs transition-colors"
-            >
-              <FileDown className="w-4 h-4 text-red-600" />
-              <span>Export Debarment Gazette</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setBulkReleaseFeedback(`Bulk Admit Cards successfully released for all ${eligibleStudents.length} eligible candidates with ≥75% attendance.`);
-                setTimeout(() => setBulkReleaseFeedback(null), 4000);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#EFF4FF] hover:bg-[#DCE9FF] text-[#0B3B60] text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <ShieldAlert className="w-4 h-4" />
-              <span>Bulk Admit Card Release</span>
-            </button>
-          </div>
-        </div>
-
-        {bulkReleaseFeedback && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{bulkReleaseFeedback}</span>
-          </div>
-        )}
-
-        {/* 4 Cadre Analytics KPI Cards matching Stitch UI */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <KpiCard title="Enrolled" value={list.length} unit="Students" icon={<Users className="w-5 h-5" />} />
           <KpiCard
-            title="Total Enrolled Cohort"
-            value={totalStudents.toString()}
-            unit="Students"
-            icon={<Users className="w-5 h-5 text-[#0B3B60]" />}
-            footerLeft="Active Academic Depts"
-            footerRight="100% KYC Verified"
-            footerRightColor="neutral"
-          />
-          <KpiCard
-            title="Eligible for Hall Tickets (≥75%)"
-            value={eligibleStudents.length.toString()}
-            unit="Candidates"
-            icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-            footerLeft={`${totalStudents > 0 ? ((eligibleStudents.length / totalStudents) * 100).toFixed(1) : 0}% Cleared`}
-            footerRight="Safe Zone"
+            title={`At or above ${ATTENDANCE_THRESHOLD}%`}
+            value={counts.safe}
+            icon={<CheckCircle2 className="w-5 h-5 text-emerald-700" />}
+            footerLeft={`${formatPercent(ratio(counts.safe, list.length))} of cohort`}
             footerRightColor="success"
           />
           <KpiCard
-            title="At-Risk / Condonation Desk"
-            value={atRiskStudents.length.toString()}
-            unit="Under Review"
-            icon={<AlertTriangle className="w-5 h-5 text-amber-600" />}
-            footerLeft="65.0% – 74.9% Gap"
-            footerRight="Review Required"
+            title={`${CONDONATION_FLOOR}–${ATTENDANCE_THRESHOLD}% (condonable)`}
+            value={counts.condonation}
+            icon={<AlertTriangle className="w-5 h-5 text-amber-700" />}
+            footerLeft="Eligible for review"
             footerRightColor="warning"
           />
           <KpiCard
-            title="Debarred Students (<65%)"
-            value={debarredStudents.length.toString()}
-            unit="Withheld"
-            icon={<Ban className="w-5 h-5 text-red-600" />}
-            footerLeft="No Condonation Possible"
-            footerRight="Ordinance 14(B)"
+            title="Debarred"
+            value={counts.debarred}
+            icon={<Ban className="w-5 h-5 text-red-700" />}
+            footerLeft="Hall tickets withheld"
             footerRightColor="error"
           />
         </div>
 
-        {/* Tabular Roster with Debarment Filter */}
-        <DataTable
-          data={filteredStudents}
-          columns={columns}
-          searchPlaceholder="Search student by name, roll number, or department..."
-          searchKey="name"
-          pageSize={10}
-          isLoading={isLoading}
-          filterComponent={
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedDebarmentFilter}
-                onChange={(e) => setSelectedDebarmentFilter(e.target.value)}
-                className="h-9 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-xs font-semibold text-slate-700 outline-none"
-              >
-                <option value="ALL">All Debarment Statuses</option>
-                <option value="ELIGIBLE">Eligible (≥75%)</option>
-                <option value="CONDONATION">At-Risk Condonation (65-74%)</option>
-                <option value="DEBARRED">Debarred (&lt;65%)</option>
-              </select>
-            </div>
-          }
-          exportFileName="jbit-student-debarment-roster"
-        />
+        {students.isError ? (
+          <ErrorState error={students.error} onRetry={() => students.refetch()} />
+        ) : (
+          <DataTable
+            data={list.filter((s) => matchesFilter(s, filter))}
+            columns={columns}
+            searchPlaceholder="Search by name…"
+            searchKey="name"
+            pageSize={10}
+            isLoading={students.isPending}
+            exportFileName="jbit-student-debarment-roster"
+            filterComponent={
+              <SelectInput aria-label="Filter by attendance status" value={filter} onChange={(e) => setFilter(e.target.value as Filter)} className="sm:w-56">
+                <option value="ALL">All students</option>
+                <option value="ELIGIBLE">Eligible</option>
+                <option value="CONDONATION">{`${CONDONATION_FLOOR}–${ATTENDANCE_THRESHOLD}% band`}</option>
+                <option value="DEBARRED">Debarred</option>
+              </SelectInput>
+            }
+          />
+        )}
       </div>
 
-      {/* Condonation Review Modal */}
-      {selectedStudentForReview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl border border-[#CBD5E1] shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
-              <div className="flex items-center gap-2">
-                <Gavel className="w-5 h-5 text-[#0B3B60]" />
-                <h3 className="text-base font-bold text-slate-900 font-headline">
-                  Attendance Condonation Review
-                </h3>
+      <Modal
+        open={reviewing !== null}
+        onClose={() => setReviewing(null)}
+        title="Debarment Review"
+        icon={<Gavel className="w-5 h-5 text-primary-container" />}
+        size="lg"
+      >
+        {reviewing && (
+          <div className="space-y-4 text-sm">
+            <div className="p-3 rounded-xl bg-slate-50 border border-border-subtle">
+              <p className="font-semibold text-sm text-slate-900">{reviewing.name}</p>
+              <p className="text-slate-500 font-mono">
+                #{reviewing.rollNumber} · {reviewing.program}
+              </p>
+              <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-200">
+                <span>Attendance</span>
+                <span className="font-semibold text-sm text-slate-900 font-tabular-nums">
+                  {formatPercent(reviewing.attendancePercent)} ({reviewing.attendedClasses}/{reviewing.conductedClasses} classes)
+                </span>
               </div>
-              <button
-                onClick={() => setSelectedStudentForReview(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {reviewing.pendingAttendancePetitions > 0 && (
+                <p className="mt-2 text-amber-700">{reviewing.pendingAttendancePetitions} attendance petition(s) pending review.</p>
+              )}
             </div>
-
-            <div className="py-4 space-y-3 text-xs">
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                <p className="font-bold text-sm text-slate-900">{selectedStudentForReview.name}</p>
-                <p className="text-slate-500 font-mono">Roll: #{selectedStudentForReview.rollNumber} • {selectedStudentForReview.program}</p>
-                <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-200">
-                  <span>Current Attendance:</span>
-                  <span className="font-bold text-sm text-slate-900 font-tabular-nums">
-                    {selectedStudentForReview.attendancePercent}% ({selectedStudentForReview.attendedClasses}/{selectedStudentForReview.conductedClasses} classes)
-                  </span>
-                </div>
+            {attendanceBand(reviewing.attendancePercent) === "critical" && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800">
+                Attendance is below {CONDONATION_FLOOR}%; condonation is not permitted under Ordinance 14(B).
               </div>
-
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-                <p className="font-semibold">UTU Ordinance 14(B) Assessment:</p>
-                <p className="mt-1">
-                  Students between 65.0% and 74.9% may be condoned by the Dean Academics upon verification of valid medical certificates or authorized university event On-Duty (OD) slips.
-                </p>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateDebarmentMutation.mutate({
-                      studentId: selectedStudentForReview.id,
-                      status: "DEBARRED",
-                    })
-                  }
-                  className="px-3.5 py-2 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold"
-                >
-                  Debar &amp; Withhold
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateDebarmentMutation.mutate({
-                      studentId: selectedStudentForReview.id,
-                      status: "ELIGIBLE",
-                    })
-                  }
-                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
-                >
-                  Approve Condonation &amp; Release Hall Ticket
-                </button>
-              </div>
+            )}
+            <div className="pt-2 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">
+              <Button variant="danger" disabled={updateDebarment.isPending} onClick={() => setConfirmingDebar(true)}>
+                Debar & withhold hall ticket
+              </Button>
+              <Button
+                variant="success"
+                loading={updateDebarment.isPending && !confirmingDebar}
+                disabled={attendanceBand(reviewing.attendancePercent) === "critical"}
+                onClick={() => decide(reviewing, "ELIGIBLE")}
+              >
+                Approve & release hall ticket
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={confirmingDebar && reviewing !== null}
+        title="Debar this student?"
+        confirmLabel="Debar student"
+        confirmVariant="danger"
+        loading={updateDebarment.isPending}
+        onCancel={() => setConfirmingDebar(false)}
+        onConfirm={() => reviewing && decide(reviewing, "DEBARRED")}
+        message={
+          reviewing && (
+            <>
+              <strong className="font-semibold text-slate-900">{reviewing.name}</strong> ({reviewing.rollNumber}) will be marked debarred and their end-term hall
+              ticket withheld. This can be reversed later by approving condonation.
+            </>
+          )
+        }
+      />
     </DashboardLayout>
   );
 }

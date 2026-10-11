@@ -1,152 +1,77 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-const MOCK_ROUTES = [
-  {
-    id: 'rt-12',
-    busNumber: 'UK-07-PA-4012',
-    driverName: 'Sardar Baljit Singh',
-    driverPhone: '+91 98370 41201',
-    routeTitle: 'Clock Tower to JBIT Campus',
-    stops: ['Clock Tower', 'Ballupur Chowk', 'Premnagar', 'Sudhowala', 'Manduwala', 'JBIT Campus'],
-    capacity: 52,
-    currentOccupancy: 38,
-    currentLocation: 'Premnagar Chowk',
-    etaToCampusMinutes: 14,
-    status: 'ON_ROUTE' as const,
-  },
-  {
-    id: 'rt-05',
-    busNumber: 'UK-07-PA-4005',
-    driverName: 'Manohar Lal',
-    driverPhone: '+91 98371 99205',
-    routeTitle: 'ISBT Dehradun to JBIT Campus',
-    stops: ['ISBT', 'Majra', 'Shimla Bypass', 'Saharanpur Road', 'JBIT Gate 2'],
-    capacity: 52,
-    currentOccupancy: 44,
-    currentLocation: 'Shimla Bypass Flyover',
-    etaToCampusMinutes: 22,
-    status: 'ON_ROUTE' as const,
-  },
-  {
-    id: 'rt-09',
-    busNumber: 'UK-07-PA-4009',
-    driverName: 'Dharmendra Joshi',
-    driverPhone: '+91 98372 11984',
-    routeTitle: 'Rishikesh / Haridwar Inter-City Express',
-    stops: ['Rishikesh Bus Stand', 'Nepali Farm', 'Doiwala', 'JBIT Campus'],
-    capacity: 52,
-    currentOccupancy: 0,
-    currentLocation: 'Campus Fleet Terminal',
-    etaToCampusMinutes: 0,
-    status: 'AT_CAMPUS' as const,
-  },
-];
+/** A bus position older than this is treated as stale rather than live. */
+const GPS_STALE_AFTER_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class TransportService {
   constructor(private prisma: PrismaService) {}
 
+  /** One row per bus, with its route, live position (if GPS reports one) and pass-holder count. */
   async findAllRoutes() {
-    if (this.prisma.isConnected) {
-      try {
-        const routes = await this.prisma.busRoute.findMany({
-          include: { buses: true },
-        });
+    const buses = await this.prisma.bus.findMany({
+      include: { route: true, _count: { select: { studentPasses: true } } },
+      orderBy: { route: { routeNumber: 'asc' } },
+    });
 
-        if (routes && routes.length > 0) {
-          return routes.map((r) => {
-            const bus = r.buses[0];
-            const stopsArray = r.stops.split(',').map((s) => s.trim());
+    return buses.map((bus) => {
+      const hasLiveFix =
+        bus.isGpsActive &&
+        bus.currentLat != null &&
+        bus.currentLng != null &&
+        Date.now() - bus.lastUpdated.getTime() < GPS_STALE_AFTER_MS;
 
-            return {
-              id: r.id,
-              busNumber: bus?.busNumber || 'UK-07-PA-4012',
-              driverName: bus?.driverName || 'Sardar Baljit Singh',
-              driverPhone: bus?.driverPhone || '+91 98370 41201',
-              routeTitle: r.name,
-              stops: stopsArray,
-              capacity: bus?.capacity || 52,
-              currentOccupancy: 38,
-              currentLocation: 'En route Premnagar',
-              etaToCampusMinutes: 14,
-              status: 'ON_ROUTE' as const,
-            };
-          });
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return MOCK_ROUTES;
+      return {
+        id: bus.id,
+        routeNumber: bus.route.routeNumber,
+        routeTitle: bus.route.name,
+        stops: bus.route.stops.split(',').map((s) => s.trim()).filter(Boolean),
+        departureTime: bus.route.departureTime,
+        busNumber: bus.busNumber,
+        driverName: bus.driverName,
+        driverPhone: bus.driverPhone,
+        capacity: bus.capacity,
+        passHolders: bus._count.studentPasses,
+        currentPosition: hasLiveFix ? { lat: bus.currentLat, lng: bus.currentLng, at: bus.lastUpdated.toISOString() } : null,
+        status: hasLiveFix ? ('ON_ROUTE' as const) : ('NO_GPS_SIGNAL' as const),
+      };
+    });
   }
 
   async getMyPass(studentId: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const assignment = await this.prisma.transportAssignment.findFirst({
-          where: {
-            OR: [
-              { studentId },
-              { student: { rollNumber: studentId } },
-              { student: { user: { email: studentId } } },
-            ],
-          },
-          include: {
-            bus: { include: { route: true } },
-            student: { include: { user: true } },
-          },
-        });
-
-        if (assignment) {
-          return {
-            studentId: assignment.studentId,
-            studentName: assignment.student.user.name,
-            passNumber: assignment.passNumber,
-            route: `${assignment.bus.route.routeNumber} (${assignment.bus.route.name})`,
-            designatedStop: assignment.pickupStop,
-            validUntil: assignment.validUntil.toISOString(),
-            busNumber: assignment.bus.busNumber,
-            driverName: assignment.bus.driverName,
-            driverPhone: assignment.bus.driverPhone,
-            status: 'ACTIVE',
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
+    const pass = await this.prisma.transportAssignment.findUnique({
+      where: { studentId },
+      include: { bus: { include: { route: true } }, student: { include: { user: { select: { name: true } } } } },
+    });
+    if (!pass) throw new NotFoundException('You do not have a transport pass.');
 
     return {
-      studentId,
-      studentName: 'Rohan Verma',
-      passNumber: 'JBIT-PASS-2026-1049',
-      route: 'Route-12 (Clock Tower to JBIT Campus)',
-      designatedStop: 'Ballupur Chowk',
-      validUntil: '2026-06-30',
-      busNumber: 'UK-07-PA-4012',
-      driverName: 'Sardar Baljit Singh',
-      driverPhone: '+91 98370 41201',
-      status: 'ACTIVE',
+      passNumber: pass.passNumber,
+      studentName: pass.student.user.name,
+      routeNumber: pass.bus.route.routeNumber,
+      routeTitle: pass.bus.route.name,
+      designatedStop: pass.pickupStop,
+      departureTime: pass.bus.route.departureTime,
+      validUntil: pass.validUntil.toISOString(),
+      isValid: pass.validUntil > new Date(),
+      busNumber: pass.bus.busNumber,
+      driverName: pass.bus.driverName,
+      driverPhone: pass.bus.driverPhone,
     };
   }
 
   async getLiveTelematics(routeNumber: string) {
-    const list = await this.findAllRoutes();
-    const route = list.find((r) => r.busNumber.toLowerCase().includes(routeNumber.toLowerCase()) || r.routeTitle.toLowerCase().includes(routeNumber.toLowerCase())) || list[0];
-    // No GPS hardware is installed on the campus fleet yet — this is a scheduled
-    // estimate derived from the route timetable, not a live vehicle position.
+    const routes = await this.findAllRoutes();
+    const route = routes.find((r) => r.routeNumber.toLowerCase() === routeNumber.toLowerCase());
+    if (!route) throw new NotFoundException(`Route ${routeNumber} not found.`);
     return {
-      routeNumber: route.routeTitle,
+      routeNumber: route.routeNumber,
       busNumber: route.busNumber,
-      isGpsActive: false,
       driverName: route.driverName,
       driverPhone: route.driverPhone,
-      scheduledEta: {
-        etaMinutes: route.etaToCampusMinutes,
-        basis: 'SCHEDULED',
-        lastUpdated: new Date().toISOString(),
-      },
+      currentPosition: route.currentPosition,
+      status: route.status,
     };
   }
 }

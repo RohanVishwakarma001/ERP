@@ -1,199 +1,116 @@
 "use client";
 
-import React, { useState } from "react";
+import { Award, CheckCircle2, Clock, Users } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
-import { Badge } from "@/components/ui/badge";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { placementService } from "@/services/domain-services";
-import { CandidateApplication } from "@/types";
-import {
-  Award,
-  CheckCircle2,
-  FileCheck,
-  Star,
-  UserCheck,
-  Send,
-  Sparkles,
-} from "lucide-react";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { ErrorState } from "@/components/ui/query-state";
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { usePlacementApplications, type ApplicationStatus, type PlacementApplication } from "@/features/placement";
+import { formatDate, initials } from "@/lib/format";
 
-export default function RecruiterConsolePage() {
-  const queryClient = useQueryClient();
-  const [selectedApp, setSelectedApp] = useState<CandidateApplication | null>(null);
-  const [techScore, setTechScore] = useState<number>(9.0);
-  const [codeScore, setCodeScore] = useState<number>(9.5);
-  const [comments, setComments] = useState<string>("Solid algorithmic background, demonstrated live coding mastery.");
-  const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
+const STATUS_VARIANT: Record<ApplicationStatus, BadgeVariant> = {
+  APPLIED: "neutral",
+  SHORTLISTED: "info",
+  INTERVIEW_SCHEDULED: "warning",
+  OFFERED: "success",
+  REJECTED: "error",
+};
 
-  const { data: applications = [] } = useQuery({
-    queryKey: ["placementApplications"],
-    queryFn: placementService.getApplications,
-  });
+const columns: Column<PlacementApplication>[] = [
+  {
+    header: "Candidate",
+    accessorKey: "studentName",
+    sortable: true,
+    cell: (a) => (
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-primary-container text-white flex items-center justify-center font-semibold text-xs shrink-0">
+          {initials(a.studentName)}
+        </div>
+        <div>
+          <span className="font-semibold text-slate-900 text-xs block">{a.studentName}</span>
+          <span className="text-xs text-slate-500 font-mono">
+            #{a.rollNumber} · CGPA {a.cgpa.toFixed(2)}
+          </span>
+        </div>
+      </div>
+    ),
+  },
+  {
+    header: "Company & Role",
+    accessorKey: "companyName",
+    sortable: true,
+    cell: (a) => (
+      <div>
+        <span className="font-semibold text-slate-800 text-xs block">{a.companyName}</span>
+        <span className="text-xs text-slate-500">{a.roleTitle}</span>
+      </div>
+    ),
+  },
+  {
+    header: "Applied",
+    accessorKey: "appliedAt",
+    sortable: true,
+    cell: (a) => <span className="text-xs text-slate-500">{formatDate(a.appliedAt)}</span>,
+  },
+  {
+    header: "Status",
+    accessorKey: "status",
+    sortable: true,
+    cell: (a) => <Badge variant={STATUS_VARIANT[a.status]}>{a.status.replace("_", " ")}</Badge>,
+  },
+  {
+    header: "Offer / LOI",
+    cell: (a) =>
+      a.status !== "OFFERED" ? (
+        <span className="text-xs text-slate-400">—</span>
+      ) : (
+        <div>
+          <span className="text-xs font-semibold text-emerald-700 block">{a.offerCtc ?? "Offer made"}</span>
+          <span className="text-xs text-slate-500">{a.loiSigned ? `LOI signed ${formatDate(a.loiSignedAt)}` : "Awaiting student signature"}</span>
+        </div>
+      ),
+  },
+];
 
-  const signLoiMutation = useMutation({
-    mutationFn: placementService.signLoi,
-    onSuccess: (res) => {
-      setFeedbackSuccess(`LOI Issued & Verified with DigiLocker. Hash: ${res.receiptHash}`);
-      queryClient.invalidateQueries({ queryKey: ["placementApplications"] });
-      setTimeout(() => setFeedbackSuccess(null), 5000);
-    },
-  });
+export default function OffersAndLoiPage() {
+  const applications = usePlacementApplications();
+  const list = applications.data ?? [];
+  const offered = list.filter((a) => a.status === "OFFERED");
 
   return (
-    <DashboardLayout role="ADMIN">
+    <DashboardLayout>
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Placement &amp; Corporate Relations</span>
-              <span className="text-slate-300">/</span>
-              <span className="text-[#0B3B60]">Recruiter Scoring Console</span>
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-headline mt-1">
-              Corporate Recruiter Candidate Evaluation &amp; LOI Console
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live scoring rubric, technical interview grading, panel feedback sync, and automated DigiLocker LOI issuance.
-            </p>
-          </div>
+        <PageHeader
+          breadcrumbs={["Training & Placement", "Offers & LOI"]}
+          title="Applications, Offers & LOI"
+          description="Every placement application with its stage. Students accept their Letter of Intent from their own dashboard."
+        />
 
-          <div className="flex items-center gap-2">
-            <Badge variant="primary" pulse>
-              Panel Calibration Active
-            </Badge>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <KpiCard title="Applications" value={list.length} icon={<Users className="w-5 h-5" />} />
+          <KpiCard
+            title="In Process"
+            value={list.filter((a) => a.status === "SHORTLISTED" || a.status === "INTERVIEW_SCHEDULED").length}
+            icon={<Clock className="w-5 h-5 text-amber-700" />}
+          />
+          <KpiCard title="Offers" value={offered.length} icon={<Award className="w-5 h-5 text-emerald-700" />} />
+          <KpiCard title="LOIs Signed" value={offered.filter((a) => a.loiSigned).length} unit={`of ${offered.length}`} icon={<CheckCircle2 className="w-5 h-5" />} />
         </div>
 
-        {feedbackSuccess && (
-          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-3 animate-in fade-in">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span className="font-semibold">{feedbackSuccess}</span>
-          </div>
+        {applications.isError ? (
+          <ErrorState error={applications.error} onRetry={() => applications.refetch()} />
+        ) : (
+          <DataTable
+            data={list}
+            columns={columns}
+            searchPlaceholder="Search candidates…"
+            pageSize={10}
+            isLoading={applications.isPending}
+            exportFileName="jbit-placement-applications"
+          />
         )}
-
-        {/* Candidate Evaluation Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Applications Queue */}
-          <div className="lg:col-span-7 space-y-3">
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-              Interview Evaluation Queue ({applications.length})
-            </h2>
-
-            {applications.map((app) => (
-              <div
-                key={app.id}
-                onClick={() => setSelectedApp(app)}
-                className={`p-4 rounded-xl border bg-white shadow-2xs transition-all cursor-pointer ${
-                  selectedApp?.id === app.id
-                    ? "border-[#0B3B60] ring-2 ring-[#0B3B60]/10"
-                    : "border-[#E2E8F0] hover:border-slate-300"
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#0B3B60] text-white flex items-center justify-center font-bold text-xs shrink-0">
-                      {app.studentName.charAt(0)}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900">{app.studentName}</h3>
-                      <p className="text-xs text-slate-500 font-mono">Roll: #{app.rollNumber} • {app.branch}</p>
-                    </div>
-                  </div>
-
-                  <Badge variant={app.status === "OFFERED" ? "success" : "info"}>
-                    {app.status}
-                  </Badge>
-                </div>
-
-                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-700">
-                    Drive: <strong className="text-[#0B3B60]">{app.companyName}</strong> ({app.roleTitle})
-                  </span>
-                  <span className="font-bold text-slate-900 font-tabular-nums">
-                    CGPA: {app.cgpa}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Scoring Console Panel */}
-          <div className="lg:col-span-5">
-            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-5 sticky top-20">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 pb-2 border-b border-[#E2E8F0]">
-                Candidate Rubric Scoring Panel
-              </h3>
-
-              {selectedApp ? (
-                <div className="space-y-4">
-                  <div className="p-3 bg-[#F8FAFC] rounded-lg border border-[#E2E8F0]">
-                    <p className="font-bold text-sm text-slate-900">{selectedApp.studentName}</p>
-                    <p className="text-xs text-slate-500">{selectedApp.companyName} — {selectedApp.roleTitle}</p>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                      <span>Technical Core / Systems Knowledge</span>
-                      <span className="font-bold text-[#0B3B60]">{techScore} / 10</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      step="0.5"
-                      value={techScore}
-                      onChange={(e) => setTechScore(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0B3B60]"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                      <span>Live Coding &amp; Problem Solving</span>
-                      <span className="font-bold text-[#0B3B60]">{codeScore} / 10</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      step="0.5"
-                      value={codeScore}
-                      onChange={(e) => setCodeScore(parseFloat(e.target.value))}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#0B3B60]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Panel Evaluation Notes
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={comments}
-                      onChange={(e) => setComments(e.target.value)}
-                      className="w-full p-2.5 rounded-lg border border-[#E2E8F0] text-xs text-slate-800 bg-[#F8FAFC] focus:outline-none focus:border-[#0B3B60]"
-                    />
-                  </div>
-
-                  <div className="pt-2 flex flex-col gap-2">
-                    <button
-                      type="button"
-                      disabled={signLoiMutation.isPending}
-                      onClick={() => signLoiMutation.mutate(selectedApp.id)}
-                      className="w-full py-2.5 rounded-lg bg-[#0B3B60] hover:bg-[#082C49] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Award className="w-4 h-4" />
-                      <span>{signLoiMutation.isPending ? "Issuing LOI..." : "Recommend & Issue Digital LOI"}</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-8 text-center text-slate-400 text-xs">
-                  Select a candidate from the evaluation queue to begin scoring.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
     </DashboardLayout>
   );

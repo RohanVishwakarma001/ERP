@@ -1,251 +1,161 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
-import {
-  QrCode,
-  AlertTriangle,
-  CheckCircle2,
-  Calendar,
-  ChevronRight,
-  ShieldCheck,
-  FileText,
-} from 'lucide-react-native';
-import { mobileStudentService } from '@/services/mobile-services';
-import { AttendanceSubjectItem } from '@/types';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Shadows, Spacing } from '@/constants/theme';
+import { QrCode, AlertTriangle, CheckCircle2, FileText } from 'lucide-react-native';
+import { QueryState } from '@/components/common/query-state';
+import { ATTENDANCE_THRESHOLD, useAttendanceSummary, useMyPetitions } from '@/features/attendance';
+import { formatDate } from '@/lib/format';
+
+type Tab = 'OVERVIEW' | 'SUBJECTS' | 'PETITIONS';
 
 interface StudentAttendanceViewProps {
   onOpenQrScanner: () => void;
 }
 
 export function StudentAttendanceView({ onOpenQrScanner }: StudentAttendanceViewProps) {
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'SUBJECTS' | 'PETITIONS'>('OVERVIEW');
-  const [attendanceData, setAttendanceData] = useState<{
-    overallPercentage: number;
-    statutoryThreshold: number;
-    isDebarred: boolean;
-    subjects: AttendanceSubjectItem[];
-  }>({
-    overallPercentage: 0,
-    statutoryThreshold: 75,
-    isDebarred: false,
-    subjects: [],
-  });
-  const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>('OVERVIEW');
+  const summary = useAttendanceSummary();
+  const petitions = useMyPetitions();
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadAttendance() {
-      try {
-        const data = await mobileStudentService.getAttendanceSummary();
-        if (isMounted && data) {
-          setAttendanceData({
-            overallPercentage: typeof data.overallPercentage === 'number' ? data.overallPercentage : 0,
-            statutoryThreshold: data.statutoryThreshold || 75,
-            isDebarred: Boolean(data.isDebarred),
-            subjects: Array.isArray(data.subjects) ? data.subjects : [],
-          });
-        }
-      } catch (err) {
-        console.error('Failed to load student attendance', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadAttendance();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const overallPct = summary.data?.overallPercentage ?? 0;
+  const threshold = summary.data?.statutoryThreshold ?? ATTENDANCE_THRESHOLD;
+  const hasClasses = (summary.data?.totalClasses ?? 0) > 0;
+  const isSafe = !hasClasses || overallPct >= threshold;
 
-  const overallPct = attendanceData.overallPercentage;
-  const isSafe = overallPct >= attendanceData.statutoryThreshold;
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'OVERVIEW', label: 'Overview' },
+    { key: 'SUBJECTS', label: 'Subjects' },
+    { key: 'PETITIONS', label: 'Petitions' },
+  ];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Macro Circular/Gauge Attendance Banner */}
       <View style={styles.macroBanner}>
         <View style={styles.macroHeader}>
           <View>
             <Text style={styles.macroLabel}>UTU STATUTORY ATTENDANCE</Text>
-            <Text style={styles.macroPercentage}>{overallPct.toFixed(1)}%</Text>
+            <Text style={styles.macroPercentage}>{summary.data ? `${overallPct.toFixed(1)}%` : '—'}</Text>
             <Text style={styles.macroSub}>
-              {isSafe
-                ? 'Eligible for End-Semester Examinations'
-                : 'Debarment Risk • Minimum 75% Attendance Required'}
+              {!hasClasses
+                ? 'No classes recorded yet'
+                : isSafe
+                  ? 'Eligible for end-semester examinations'
+                  : `Debarment risk • minimum ${threshold}% required`}
             </Text>
           </View>
-          <View
-            style={[
-              styles.safeBadge,
-              !isSafe && { backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: '#EF4444' },
-            ]}
-          >
-            {isSafe ? (
-              <CheckCircle2 size={16} color="#34D399" />
-            ) : (
-              <AlertTriangle size={16} color="#EF4444" />
-            )}
-            <Text style={[styles.safeBadgeText, !isSafe && { color: '#EF4444' }]}>
-              {isSafe ? `Safe >${attendanceData.statutoryThreshold}%` : 'Critical <75%'}
-            </Text>
-          </View>
+          {hasClasses && (
+            <View style={[styles.safeBadge, !isSafe && { backgroundColor: 'rgba(239, 68, 68, 0.2)', borderColor: '#EF4444' }]}>
+              {isSafe ? <CheckCircle2 size={16} color="#34D399" /> : <AlertTriangle size={16} color="#EF4444" />}
+              <Text style={[styles.safeBadgeText, !isSafe && { color: '#C62828' }]}>
+                {isSafe ? `Safe ≥${threshold}%` : `Below ${threshold}%`}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Progress Bar with 75% Marker */}
         <View style={styles.macroProgressContainer}>
           <View style={styles.progressBarTrack}>
             <View
-              style={[
-                styles.progressBarFill,
-                { width: `${Math.min(100, Math.max(0, overallPct))}%` },
-                !isSafe && { backgroundColor: '#EF4444' },
-              ]}
+              style={[styles.progressBarFill, { width: `${Math.min(100, Math.max(0, overallPct))}%` }, !isSafe && { backgroundColor: '#EF4444' }]}
             />
-            {/* 75% Marker */}
             <View style={styles.thresholdMarker}>
               <View style={styles.thresholdLine} />
-              <Text style={styles.thresholdText}>{attendanceData.statutoryThreshold}% Min</Text>
+              <Text style={styles.thresholdText}>{threshold}% Min</Text>
             </View>
           </View>
         </View>
 
-        <TouchableOpacity
-          style={styles.qrScanBannerBtn}
-          onPress={onOpenQrScanner}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity style={styles.qrScanBannerBtn} onPress={onOpenQrScanner} activeOpacity={0.8}>
           <QrCode size={18} color="#002541" />
-          <Text style={styles.qrScanBannerText}>Launch Geofenced QR Scanner</Text>
+          <Text style={styles.qrScanBannerText}>Scan Classroom QR</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 2. Segmented Navigation Tabs */}
       <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'OVERVIEW' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('OVERVIEW')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'OVERVIEW' && styles.activeTabText]}>
-            Overview
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'SUBJECTS' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('SUBJECTS')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'SUBJECTS' && styles.activeTabText]}>
-            Subject Roster
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'PETITIONS' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('PETITIONS')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'PETITIONS' && styles.activeTabText]}>
-            Petitions
-          </Text>
-        </TouchableOpacity>
+        {tabs.map((t) => (
+          <TouchableOpacity key={t.key} style={[styles.tabBtn, activeTab === t.key && styles.activeTabBtn]} onPress={() => setActiveTab(t.key)}>
+            <Text style={[styles.tabBtnText, activeTab === t.key && styles.activeTabText]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* 3. Subject-wise Roster */}
       {activeTab !== 'PETITIONS' ? (
         <View style={styles.subjectList}>
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#0284C7" style={{ marginVertical: 20 }} />
-          ) : attendanceData.subjects.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No attendance records recorded yet.</Text>
-            </View>
-          ) : (
-            attendanceData.subjects.map((sub) => {
-            const isWarning = sub.status === 'WARNING';
-            return (
-              <View
-                key={sub.code}
-                style={[styles.subjectCard, isWarning && styles.warningSubjectCard]}
-              >
-                <View style={styles.subjectHeader}>
-                  <View style={styles.subCodeGroup}>
-                    <Text style={styles.subCode}>{sub.code}</Text>
-                    <Text style={styles.subName}>{sub.name}</Text>
-                  </View>
-                  <View style={styles.subPercentageCol}>
-                    <Text
-                      style={[
-                        styles.subPercentage,
-                        isWarning ? styles.warningText : styles.safeText,
-                      ]}
-                    >
-                      {sub.percentage}%
-                    </Text>
-                    <Text style={styles.subCount}>
-                      {sub.attended}/{sub.total} Classes
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Progress bar */}
-                <View style={styles.subProgressTrack}>
-                  <View
-                    style={[
-                      styles.subProgressFill,
-                      {
-                        width: `${Math.min(sub.percentage, 100)}%`,
-                        backgroundColor: isWarning ? '#F59E0B' : '#10B981',
-                      },
-                    ]}
-                  />
-                </View>
-
-                <View style={styles.subFooter}>
-                  <Text style={styles.facultyName}>{sub.faculty}</Text>
-                  {isWarning ? (
-                    <View style={styles.warningPill}>
-                      <AlertTriangle size={11} color="#B45309" />
-                      <Text style={styles.warningPillText}>
-                        Attend {sub.neededFor75} more to reach 75%
-                      </Text>
+          <QueryState query={summary} emptyText="No attendance recorded yet." isEmpty={(s) => s.subjects.length === 0}>
+            {(s) =>
+              s.subjects.map((sub) => {
+                const atRisk = sub.status !== 'NORMAL';
+                return (
+                  <View key={sub.code} style={[styles.subjectCard, atRisk && styles.warningSubjectCard]}>
+                    <View style={styles.subjectHeader}>
+                      <View style={styles.subCodeGroup}>
+                        <Text style={styles.subCode}>{sub.code}</Text>
+                        <Text style={styles.subName}>{sub.name}</Text>
+                      </View>
+                      <View style={styles.subPercentageCol}>
+                        <Text style={[styles.subPercentage, atRisk ? styles.warningText : styles.safeText]}>{sub.percentage}%</Text>
+                        <Text style={styles.subCount}>
+                          {sub.attended}/{sub.total} classes
+                        </Text>
+                      </View>
                     </View>
-                  ) : (
-                    <Text style={styles.safeStatusText}>Compliant</Text>
-                  )}
-                </View>
-              </View>
-            );
-          }))}
+                    <View style={styles.subProgressTrack}>
+                      <View
+                        style={[
+                          styles.subProgressFill,
+                          { width: `${Math.min(sub.percentage, 100)}%`, backgroundColor: atRisk ? '#F59E0B' : '#10B981' },
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.subFooter}>
+                      <Text style={styles.facultyName}>{sub.faculty}</Text>
+                      {atRisk ? (
+                        <View style={styles.warningPill}>
+                          <AlertTriangle size={11} color="#B45309" />
+                          <Text style={styles.warningPillText}>
+                            Attend {sub.neededFor75} more to reach {threshold}%
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.safeStatusText}>Compliant</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            }
+          </QueryState>
         </View>
       ) : (
-        /* Petitions tab */
         <View style={styles.petitionsContainer}>
-          <View style={styles.petitionCard}>
-            <View style={styles.petitionHeader}>
-              <Text style={styles.petitionSubject}>CS-601 Compiler Design</Text>
-              <View style={styles.approvedPill}>
-                <Text style={styles.approvedText}>APPROVED</Text>
-              </View>
-            </View>
-            <Text style={styles.petitionDetails}>
-              Date: 20 May 2026 • Period 3 (Medical On-Duty Certificate Attached)
-            </Text>
-            <Text style={styles.petitionReviewer}>Approved by Dr. V. K. Bhatt (HOD)</Text>
-          </View>
-
+          <QueryState query={petitions} emptyText="You haven't filed any petitions.">
+            {(list) =>
+              list.map((p) => (
+                <View key={p.id} style={styles.petitionCard}>
+                  <View style={styles.petitionHeader}>
+                    <Text style={styles.petitionSubject}>
+                      {p.subjectCode} {p.subjectName}
+                    </Text>
+                    <View style={styles.approvedPill}>
+                      <Text style={styles.approvedText}>{p.status}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.petitionDetails}>
+                    {formatDate(p.date)} • Period {p.period}
+                  </Text>
+                  <Text style={styles.petitionReviewer}>{p.reason}</Text>
+                </View>
+              ))
+            }
+          </QueryState>
           <TouchableOpacity
             style={styles.newPetitionBtn}
-            onPress={() => Alert.alert('Petition', 'Correction petition form opened.')}
+            onPress={() =>
+              Alert.alert('File a petition', 'Attendance petitions can be filed from the Attendance page of the student web portal.')
+            }
           >
             <FileText size={16} color="#FFFFFF" />
-            <Text style={styles.newPetitionBtnText}>Submit New Attendance Petition</Text>
+            <Text style={styles.newPetitionBtnText}>How to file a petition</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -256,11 +166,11 @@ export function StudentAttendanceView({ onOpenQrScanner }: StudentAttendanceView
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   content: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 32,
     gap: Spacing.lg,
   },
   macroBanner: {
@@ -275,7 +185,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   macroLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     color: '#93C5FD',
     letterSpacing: 0.5,
@@ -287,7 +197,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   macroSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#BAE6FD',
     marginTop: 2,
   },
@@ -303,7 +213,7 @@ const styles = StyleSheet.create({
     borderColor: '#059669',
   },
   safeBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#34D399',
   },
@@ -335,7 +245,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBBF24',
   },
   thresholdText: {
-    fontSize: 9,
+    fontSize: 12,
     color: '#FBBF24',
     fontWeight: '800',
     marginTop: 2,
@@ -376,7 +286,7 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#636366',
   },
   activeTabText: {
     color: '#0B3B60',
@@ -390,7 +300,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 10,
     ...Shadows.sm,
   },
@@ -408,14 +318,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   subCode: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0B3B60',
   },
   subName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
     marginTop: 2,
   },
   subPercentageCol: {
@@ -426,19 +336,19 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   safeText: {
-    color: '#10B981',
+    color: '#1F7A45',
   },
   warningText: {
-    color: '#D97706',
+    color: '#9A5B05',
   },
   subCount: {
-    fontSize: 10,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#737378',
     marginTop: 2,
   },
   subProgressTrack: {
     height: 6,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -452,11 +362,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 4,
     borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
+    borderTopColor: '#F2F2F7',
   },
   facultyName: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
   },
   warningPill: {
     flexDirection: 'row',
@@ -468,13 +378,13 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   warningPillText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#92400E',
   },
   safeStatusText: {
-    fontSize: 11,
-    color: '#059669',
+    fontSize: 12,
+    color: '#1F7A45',
     fontWeight: '600',
   },
   petitionsContainer: {
@@ -485,7 +395,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 6,
   },
   petitionHeader: {
@@ -496,7 +406,7 @@ const styles = StyleSheet.create({
   petitionSubject: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   approvedPill: {
     backgroundColor: '#ECFDF5',
@@ -505,17 +415,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   approvedText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
     color: '#065F46',
   },
   petitionDetails: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
   },
   petitionReviewer: {
-    fontSize: 10,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#737378',
   },
   newPetitionBtn: {
     flexDirection: 'row',
@@ -539,11 +449,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   emptyText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontWeight: '500',
   },
 });

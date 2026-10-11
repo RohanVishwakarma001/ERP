@@ -1,286 +1,178 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
-import {
-  BookOpen,
-  Award,
-  Download,
-  Calendar,
-  FileCheck,
-  CheckCircle2,
-  Clock,
-  UploadCloud,
-} from 'lucide-react-native';
+import { Shadows, Spacing } from '@/constants/theme';
+import { CheckCircle2, Clock, UploadCloud } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/auth-store';
-import { mobileStudentService } from '@/services/mobile-services';
+import { QueryState } from '@/components/common/query-state';
+import { useAssignments, useGradeCard, useSubmitAssignment } from '@/features/academics';
+import { formatDate } from '@/lib/format';
+
+type Tab = 'SUBJECTS' | 'GRADE_CARD' | 'ASSIGNMENTS';
+
+const SUBMITTABLE_TYPES = [
+  'application/pdf',
+  'image/*',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 export function StudentAcademicsView() {
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'SUBJECTS' | 'GRADE_CARD' | 'ASSIGNMENTS'>('SUBJECTS');
-  const [gradeCard, setGradeCard] = useState<any>(null);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [submittingId, setSubmittingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    async function loadAcademicData() {
-      try {
-        const [gc, asns] = await Promise.allSettled([
-          mobileStudentService.getGradeCard(),
-          mobileStudentService.getAssignments(),
-        ]);
-        if (isMounted) {
-          if (gc.status === 'fulfilled') setGradeCard(gc.value);
-          if (asns.status === 'fulfilled') setAssignments(Array.isArray(asns.value) ? asns.value : []);
-        }
-      } catch (err) {
-        console.error('Failed to load academic data', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadAcademicData();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const [activeTab, setActiveTab] = useState<Tab>('SUBJECTS');
+  const gradeCard = useGradeCard();
+  const assignments = useAssignments();
+  const submit = useSubmitAssignment();
 
   const handleAssignmentSubmit = async (assignmentId: string) => {
-    const picked = await DocumentPicker.getDocumentAsync({
-      type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-      multiple: false,
-    });
+    const picked = await DocumentPicker.getDocumentAsync({ type: SUBMITTABLE_TYPES, multiple: false });
     if (picked.canceled || !picked.assets?.[0]) return;
-
     const file = picked.assets[0];
-    setSubmittingId(assignmentId);
-    try {
-      const uploaded = await mobileStudentService.uploadFile(
-        { uri: file.uri, name: file.name, mimeType: file.mimeType || 'application/octet-stream' },
-        'assignments'
-      );
-      await mobileStudentService.submitAssignment(assignmentId, uploaded.url);
-      Alert.alert('Success', `"${file.name}" submitted and registered with academic department.`);
-      const updated = await mobileStudentService.getAssignments();
-      setAssignments(Array.isArray(updated) ? updated : []);
-    } catch (err: any) {
-      Alert.alert('Error', err.response?.data?.message || 'Failed to submit assignment.');
-    } finally {
-      setSubmittingId(null);
-    }
+    submit.mutate(
+      { assignmentId, file: { uri: file.uri, name: file.name, mimeType: file.mimeType || 'application/octet-stream' } },
+      { onSuccess: () => Alert.alert('Submitted', `"${file.name}" was submitted.`) },
+    );
   };
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'SUBJECTS', label: 'Subjects' },
+    { key: 'GRADE_CARD', label: 'Grade Card' },
+    { key: 'ASSIGNMENTS', label: 'Assignments' },
+  ];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Academic Header Card */}
       <View style={styles.headerCard}>
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.headerSubtitle}>VEER MADHO SINGH BHANDARI UTU</Text>
-            <Text style={styles.headerTitle}>Academic Registry</Text>
+            <Text style={styles.headerTitle}>Academic Record</Text>
             <Text style={styles.headerMeta}>
-              B.Tech Computer Science • Roll: {user?.rollNumber || '220102048'}
+              {[user?.department, user?.rollNumber ? `Roll ${user.rollNumber}` : null].filter(Boolean).join(' • ')}
             </Text>
           </View>
           <View style={styles.cgpaBadge}>
             <Text style={styles.cgpaLabel}>CGPA</Text>
-            <Text style={styles.cgpaValue}>{user?.cgpa || 8.92}</Text>
+            <Text style={styles.cgpaValue}>{gradeCard.data?.cgpa.toFixed(2) ?? user?.cgpa?.toFixed(2) ?? '—'}</Text>
           </View>
         </View>
       </View>
 
-      {/* 2. Navigation Tabs */}
       <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'SUBJECTS' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('SUBJECTS')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'SUBJECTS' && styles.activeTabText]}>
-            Curriculum
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'GRADE_CARD' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('GRADE_CARD')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'GRADE_CARD' && styles.activeTabText]}>
-            Grade Cards
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabBtn, activeTab === 'ASSIGNMENTS' && styles.activeTabBtn]}
-          onPress={() => setActiveTab('ASSIGNMENTS')}
-        >
-          <Text style={[styles.tabBtnText, activeTab === 'ASSIGNMENTS' && styles.activeTabText]}>
-            Assignments
-          </Text>
-        </TouchableOpacity>
+        {tabs.map((t) => (
+          <TouchableOpacity key={t.key} style={[styles.tabBtn, activeTab === t.key && styles.activeTabBtn]} onPress={() => setActiveTab(t.key)}>
+            <Text style={[styles.tabBtnText, activeTab === t.key && styles.activeTabText]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* 3. Tab Content */}
       {activeTab === 'SUBJECTS' && (
         <View style={styles.cardsList}>
-          <View style={styles.infoBanner}>
-            <Text style={styles.infoBannerText}>
-              Semester {user?.semester || 6} Registered Courses (UTU Model Curriculum)
-            </Text>
-          </View>
-
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 20 }} />
-          ) : !gradeCard?.subjects || gradeCard.subjects.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No registered course subjects found.</Text>
-            </View>
-          ) : (
-            gradeCard.subjects.map((item: any) => (
-              <View key={item.code} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <View>
-                    <Text style={styles.courseCode}>{item.code}</Text>
-                    <Text style={styles.courseName}>{item.title || item.name}</Text>
-                  </View>
-                  <View style={styles.creditPill}>
-                    <Text style={styles.creditText}>{item.credits} Credits</Text>
-                  </View>
+          <QueryState query={gradeCard} emptyText="No subjects found." isEmpty={(gc) => gc.subjects.length === 0}>
+            {(gc) => (
+              <>
+                <View style={styles.infoBanner}>
+                  <Text style={styles.infoBannerText}>Semester {gc.semester} subjects</Text>
                 </View>
-
-                <View style={styles.progressRow}>
-                  <Text style={styles.progressLabel}>Grade Points: {item.gradePoints ?? item.gradePoint ?? 9}/10</Text>
-                  <View style={styles.progressBar}>
-                    <View style={[styles.progressFill, { width: `${(item.gradePoints || item.gradePoint || 9) * 10}%` }]} />
+                {gc.subjects.map((s) => (
+                  <View key={s.code} style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <View>
+                        <Text style={styles.courseCode}>{s.code}</Text>
+                        <Text style={styles.courseName}>{s.title}</Text>
+                      </View>
+                      <View style={styles.creditPill}>
+                        <Text style={styles.creditText}>{s.credits} Credits</Text>
+                      </View>
+                    </View>
+                    <View style={styles.progressRow}>
+                      {s.totalMarks === null || s.maxMarks === null ? (
+                        <Text style={styles.progressLabel}>No marks recorded yet</Text>
+                      ) : (
+                        <>
+                          <Text style={styles.progressLabel}>
+                            {s.totalMarks}/{s.maxMarks} marks • Grade {s.grade}
+                          </Text>
+                          <View style={styles.progressBar}>
+                            <View style={[styles.progressFill, { width: `${(s.totalMarks / s.maxMarks) * 100}%` }]} />
+                          </View>
+                        </>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </View>
-            ))
-          )}
+                ))}
+              </>
+            )}
+          </QueryState>
         </View>
       )}
 
       {activeTab === 'GRADE_CARD' && (
         <View style={styles.cardsList}>
-          <View style={styles.digilockerBanner}>
-            <View style={styles.digilockerIcon}>
-              <FileCheck size={20} color="#0B3B60" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.digilockerTitle}>National Academic Depository (NAD)</Text>
-              <Text style={styles.digilockerSub}>
-                DigiLocker Verified Blockchain Credentials Linked
-              </Text>
-            </View>
-          </View>
-
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 20 }} />
-          ) : !gradeCard ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No published grade cards available for this student.</Text>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View>
-                  <Text style={styles.semTitle}>Semester {gradeCard.semester} (Academic Year {gradeCard.academicYear || '2025-2026'})</Text>
-                  <Text style={styles.semCredits}>{gradeCard.totalCreditsEarned || 24} Credits Earned</Text>
+          <QueryState query={gradeCard}>
+            {(gc) => (
+              <View style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <View>
+                    <Text style={styles.semTitle}>Semester {gc.semester}</Text>
+                    <Text style={styles.semCredits}>{gc.totalCreditsEarned} credits earned</Text>
+                  </View>
+                  <View style={styles.sgpaCol}>
+                    <Text style={styles.sgpaVal}>{gc.sgpa?.toFixed(2) ?? '—'}</Text>
+                    <Text style={styles.sgpaLbl}>SGPA</Text>
+                  </View>
                 </View>
-                <View style={styles.sgpaCol}>
-                  <Text style={styles.sgpaVal}>{gradeCard.sgpa || gradeCard.cgpa || 8.92}</Text>
-                  <Text style={styles.sgpaLbl}>SGPA</Text>
+                <View style={styles.cardFooter}>
+                  <View style={styles.passTag}>
+                    <CheckCircle2 size={12} color="#059669" />
+                    <Text style={styles.passTagText}>{gc.resultStatus.replace(/_/g, ' ')}</Text>
+                  </View>
+                  {gc.backlogs > 0 && <Text style={styles.deadlineText}>{gc.backlogs} backlog(s)</Text>}
                 </View>
               </View>
-
-              <View style={styles.cardFooter}>
-                <View style={styles.passTag}>
-                  <CheckCircle2 size={12} color="#059669" />
-                  <Text style={styles.passTagText}>{gradeCard.resultStatus || 'PASSED'}</Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.downloadBtn}
-                  onPress={() => Alert.alert('DigiLocker Verified', `Digital Hash:\n${gradeCard.digitalVerificationHash || '0x88f2a991c0b749d2e1329a43fe7d8902'}`)}
-                >
-                  <Download size={13} color="#0B3B60" />
-                  <Text style={styles.downloadBtnText}>Transcript PDF</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+            )}
+          </QueryState>
         </View>
       )}
 
       {activeTab === 'ASSIGNMENTS' && (
         <View style={styles.cardsList}>
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 20 }} />
-          ) : assignments.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No pending or submitted assignments.</Text>
-            </View>
-          ) : (
-            assignments.map((asn) => (
-              <View key={asn.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.asnSubject}>{asn.subject?.name || asn.subject || 'Academic Coursework'}</Text>
-                  <View
-                    style={[
-                      styles.statusPill,
-                      asn.mySubmissionStatus === 'SUBMITTED' ? styles.submittedPill : styles.pendingPill,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusPillText,
-                        asn.mySubmissionStatus === 'SUBMITTED' ? styles.submittedText : styles.pendingText,
-                      ]}
-                    >
-                      {asn.mySubmissionStatus || 'PENDING'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.asnTitle}>{asn.title}</Text>
-
-                <View style={styles.cardFooter}>
-                  <View style={styles.deadlineRow}>
-                    <Clock size={12} color="#64748B" />
-                    <Text style={styles.deadlineText}>
-                      Due: {asn.deadline ? new Date(asn.deadline).toLocaleDateString() : 'Active'}
-                    </Text>
-                  </View>
-
-                  {asn.mySubmissionStatus !== 'SUBMITTED' && (
-                    <TouchableOpacity
-                      style={styles.uploadBtn}
-                      onPress={() => handleAssignmentSubmit(asn.id)}
-                      disabled={submittingId === asn.id}
-                    >
-                      {submittingId === asn.id ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <UploadCloud size={13} color="#FFFFFF" />
-                      )}
-                      <Text style={styles.uploadBtnText}>
-                        {submittingId === asn.id ? 'Uploading...' : 'Submit Work'}
+          <QueryState query={assignments} emptyText="No assignments set for your section.">
+            {(list) =>
+              list.map((asn) => {
+                const submitted = asn.mySubmissionStatus !== null && asn.mySubmissionStatus !== 'PENDING';
+                const isUploading = submit.isPending && submit.variables?.assignmentId === asn.id;
+                const isOverdue = new Date(asn.deadline) < new Date();
+                return (
+                  <View key={asn.id} style={styles.card}>
+                    <View style={styles.cardHeader}>
+                      <Text style={styles.asnSubject}>
+                        {asn.subjectCode} • {asn.subjectName}
                       </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            ))
-          )}
+                      <View style={[styles.statusPill, submitted ? styles.submittedPill : styles.pendingPill]}>
+                        <Text style={[styles.statusPillText, submitted ? styles.submittedText : styles.pendingText]}>
+                          {asn.mySubmissionStatus ?? 'PENDING'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.asnTitle}>{asn.title}</Text>
+                    <View style={styles.cardFooter}>
+                      <View style={styles.deadlineRow}>
+                        <Clock size={12} color="#64748B" />
+                        <Text style={styles.deadlineText}>Due {formatDate(asn.deadline)}</Text>
+                      </View>
+                      {!submitted && !isOverdue && (
+                        <TouchableOpacity style={styles.uploadBtn} onPress={() => handleAssignmentSubmit(asn.id)} disabled={isUploading}>
+                          {isUploading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <UploadCloud size={13} color="#FFFFFF" />}
+                          <Text style={styles.uploadBtnText}>{isUploading ? 'Uploading…' : 'Submit Work'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            }
+          </QueryState>
         </View>
       )}
     </ScrollView>
@@ -290,11 +182,11 @@ export function StudentAcademicsView() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   content: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 32,
     gap: Spacing.lg,
   },
   headerCard: {
@@ -309,7 +201,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerSubtitle: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
     color: '#93C5FD',
     letterSpacing: 0.5,
@@ -321,7 +213,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#BAE6FD',
     marginTop: 2,
   },
@@ -335,7 +227,7 @@ const styles = StyleSheet.create({
     borderColor: '#38BDF8',
   },
   cgpaLabel: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
     color: '#93C5FD',
   },
@@ -365,7 +257,7 @@ const styles = StyleSheet.create({
   tabBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#636366',
   },
   activeTabText: {
     color: '#0B3B60',
@@ -382,7 +274,7 @@ const styles = StyleSheet.create({
     borderColor: '#BFDBFE',
   },
   infoBannerText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#1E40AF',
     fontWeight: '600',
   },
@@ -410,8 +302,8 @@ const styles = StyleSheet.create({
     color: '#0B3B60',
   },
   digilockerSub: {
-    fontSize: 11,
-    color: '#0284C7',
+    fontSize: 12,
+    color: '#0B6AA8',
     marginTop: 2,
   },
   card: {
@@ -419,7 +311,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     gap: 10,
     ...Shadows.sm,
   },
@@ -429,54 +321,54 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   courseCode: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#0B3B60',
   },
   courseName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
     marginTop: 2,
   },
   creditPill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   creditText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: '#48484A',
   },
   progressRow: {
     gap: 4,
   },
   progressLabel: {
-    fontSize: 10,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     fontWeight: '500',
   },
   progressBar: {
     height: 6,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#F2F2F7',
     borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#0284C7',
+    backgroundColor: '#0B6AA8',
     borderRadius: 3,
   },
   semTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   semCredits: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
     marginTop: 2,
   },
   sgpaCol: {
@@ -488,8 +380,8 @@ const styles = StyleSheet.create({
     color: '#0B3B60',
   },
   sgpaLbl: {
-    fontSize: 9,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#737378',
     fontWeight: '700',
   },
   cardFooter: {
@@ -498,7 +390,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
+    borderTopColor: '#F2F2F7',
   },
   passTag: {
     flexDirection: 'row',
@@ -506,9 +398,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   passTagText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#059669',
+    color: '#1F7A45',
   },
   downloadBtn: {
     flexDirection: 'row',
@@ -520,19 +412,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   downloadBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
   asnSubject: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#0B3B60',
   },
   asnTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   statusPill: {
     paddingHorizontal: 6,
@@ -540,7 +432,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   statusPillText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
   },
   submittedPill: {
@@ -548,7 +440,7 @@ const styles = StyleSheet.create({
   },
   submittedText: {
     color: '#065F46',
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
   },
   pendingPill: {
@@ -556,7 +448,7 @@ const styles = StyleSheet.create({
   },
   pendingText: {
     color: '#92400E',
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '800',
   },
   deadlineRow: {
@@ -565,8 +457,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   deadlineText: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#636366',
   },
   uploadBtn: {
     flexDirection: 'row',
@@ -578,7 +470,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   uploadBtnText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
   },
@@ -589,11 +481,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   emptyText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontWeight: '500',
   },
 });

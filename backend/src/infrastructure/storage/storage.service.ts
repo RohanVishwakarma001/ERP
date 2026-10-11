@@ -1,6 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { AppConfig } from '../../config';
 
 export interface UploadedFile {
   url: string;
@@ -15,15 +15,12 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly configured: boolean;
 
-  constructor(private configService: ConfigService) {
-    const cloudName = this.configService.get<string>('STORAGE_BUCKET');
-    const apiKey = this.configService.get<string>('STORAGE_ACCESS_KEY');
-    const apiSecret = this.configService.get<string>('STORAGE_SECRET_KEY');
+  constructor(config: AppConfig) {
+    const storage = config.storage;
+    this.configured = storage !== null;
 
-    this.configured = Boolean(cloudName && apiKey && apiSecret && apiKey !== 'mock-key');
-
-    if (this.configured) {
-      cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+    if (storage) {
+      cloudinary.config({ cloud_name: storage.cloudName, api_key: storage.apiKey, api_secret: storage.apiSecret });
     } else {
       this.logger.warn(
         'Cloudinary storage is not configured (STORAGE_BUCKET/STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY). File uploads will fail until configured.',

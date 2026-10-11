@@ -1,9 +1,14 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import { Suspense, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
-import { authService } from "@/services/auth.service";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { authApi } from "@/features/auth";
+import { getErrorMessage } from "@/lib/api/api-error";
+import { Button } from "@/components/ui/button";
+import { Field, TextInput } from "@/components/ui/form-field";
+import { AuthShell, FormAlert, PasswordInput, PasswordRequirements, isStrongPassword } from "@/components/layout/auth-shell";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -16,138 +21,130 @@ function ResetPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const mismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (newPassword !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters.");
-      return;
-    }
-    if (!/^\d{6}$/.test(otp)) {
-      setError("Enter the 6-digit verification code sent to your email.");
-      return;
-    }
+    if (!/^\d{6}$/.test(otp)) return setError("Enter the 6-digit verification code from your email.");
+    if (!isStrongPassword(newPassword)) return setError("Your new password doesn't meet all the requirements below.");
+    if (newPassword !== confirmPassword) return setError("The two passwords don't match.");
 
     setIsSubmitting(true);
     try {
-      const res = await authService.resetPassword(identifier.trim(), otp, newPassword);
-      if (res.success) {
-        setSuccess(true);
-        setTimeout(() => router.push("/login"), 2000);
-      } else {
-        setError(res.message || "Unable to reset password.");
-      }
+      await authApi.resetPassword(identifier.trim(), otp, newPassword);
+      setSuccess(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid or expired verification code.");
+      setError(getErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#0B3B60] text-white mx-auto flex items-center justify-center font-bold text-xl shadow-md mb-4">
-          <ShieldCheck className="w-6 h-6" />
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 font-headline">
-          Set a New Password
-        </h1>
-        <p className="mt-1 text-xs text-slate-500">
-          Enter the 6-digit code emailed to your registered address, and choose a new password.
-        </p>
-      </div>
-
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        <div className="bg-white py-8 px-6 rounded-2xl border border-[#E2E8F0] shadow-xl">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2 text-xs text-red-700">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {success ? (
-            <div className="text-center space-y-3 py-4">
-              <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-              <p className="text-sm text-slate-700">Password reset successfully. Redirecting to sign in...</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Institutional ID / Email / Roll Number
-                </label>
-                <input
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  required
-                  minLength={3}
-                  type="text"
-                  className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-slate-800 focus:outline-none focus:border-[#0B3B60] focus:ring-2 focus:ring-[#0B3B60]/10 transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">6-Digit Verification Code</label>
-                <input
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  required
-                  inputMode="numeric"
-                  maxLength={6}
-                  className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-slate-800 tracking-[0.3em] font-bold text-center focus:outline-none focus:border-[#0B3B60] focus:ring-2 focus:ring-[#0B3B60]/10 transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">New Password</label>
-                <input
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  type="password"
-                  autoComplete="new-password"
-                  className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-slate-800 focus:outline-none focus:border-[#0B3B60] focus:ring-2 focus:ring-[#0B3B60]/10 transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm New Password</label>
-                <input
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  type="password"
-                  autoComplete="new-password"
-                  className="w-full h-10 px-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm text-slate-800 focus:outline-none focus:border-[#0B3B60] focus:ring-2 focus:ring-[#0B3B60]/10 transition-all"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full h-11 rounded-lg bg-[#0B3B60] text-white hover:bg-[#082C49] font-semibold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isSubmitting ? "Resetting..." : "Reset Password"}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          )}
-
-          <div className="mt-6 text-center">
-            <a href="/login" className="text-xs text-[#0B3B60] font-semibold hover:underline">
-              Back to Sign In
-            </a>
+  if (success) {
+    return (
+      <AuthShell title="Password updated">
+        <div className="space-y-5 text-center">
+          <div aria-hidden className="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+            <CheckCircle2 className="w-6 h-6" />
           </div>
+          <p role="status" className="text-sm text-slate-700">
+            Your password has been reset and you&apos;ve been signed out of all devices. Sign in with your new password.
+          </p>
+          <Button size="lg" className="w-full" onClick={() => router.replace("/login")}>
+            Go to sign in
+          </Button>
         </div>
-      </div>
-    </div>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell
+      title="Choose a new password"
+      subtitle="Enter the 6-digit code we emailed you, then set a new password."
+      footer={
+        <Link href="/login" className="inline-flex items-center gap-1.5 font-medium text-primary-container hover:underline underline-offset-4 rounded">
+          <ArrowLeft aria-hidden className="w-4 h-4" /> Back to sign in
+        </Link>
+      }
+    >
+      {error && <FormAlert>{error}</FormAlert>}
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <Field label="Email, employee ID or roll number">
+          <TextInput
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            required
+            minLength={3}
+            autoComplete="username"
+            autoCapitalize="none"
+            className="h-11"
+          />
+        </Field>
+
+        <Field label="Verification code" hint="Didn't get it? Check spam, or request a new code.">
+          <TextInput
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            required
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder="000000"
+            className="h-11 tracking-[0.4em] font-semibold text-center font-tabular-nums"
+          />
+        </Field>
+
+        <div className="space-y-1.5">
+          <label htmlFor="new-password" className="block text-sm font-medium text-slate-800">
+            New password
+          </label>
+          <PasswordInput
+            id="new-password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            maxLength={72}
+            autoComplete="new-password"
+            aria-describedby="password-rules"
+          />
+          <PasswordRequirements id="password-rules" value={newPassword} />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-800">
+            Confirm new password
+          </label>
+          <PasswordInput
+            id="confirm-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            maxLength={72}
+            autoComplete="new-password"
+            aria-invalid={mismatch || undefined}
+            aria-describedby={mismatch ? "confirm-error" : undefined}
+          />
+          {mismatch && (
+            <p id="confirm-error" className="text-xs text-red-700">
+              Passwords don&apos;t match.
+            </p>
+          )}
+        </div>
+
+        <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+          {isSubmitting ? "Updating password…" : "Reset password"}
+        </Button>
+        <p className="text-center text-sm">
+          <Link href="/forgot-password" className="font-medium text-primary-container hover:underline underline-offset-4 rounded">
+            Request a new code
+          </Link>
+        </p>
+      </form>
+    </AuthShell>
   );
 }
 

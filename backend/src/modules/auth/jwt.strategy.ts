@@ -1,8 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import { AppConfig } from '../../config';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { JWT_ALGORITHM } from './auth.constants';
 
 export interface JwtPayload {
   sub: string;
@@ -11,35 +13,37 @@ export interface JwtPayload {
   name: string;
   studentId?: string;
   facultyId?: string;
+  typ?: 'access' | 'refresh';
 }
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private configService: ConfigService,
+    config: AppConfig,
     private prisma: PrismaService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+      secretOrKey: config.jwtAccessSecret,
+      algorithms: [JWT_ALGORITHM],
     });
   }
 
-  async validate(payload: JwtPayload) {
+  /** Re-reads the user on every request so deactivated accounts lose access immediately. */
+  async validate(payload: JwtPayload): Promise<AuthUser> {
+    if (payload.typ === 'refresh') throw new UnauthorizedException('Invalid access token.');
+
     let user;
     try {
       user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        include: {
-          student: true,
-          faculty: true,
-        },
+        include: { student: true, faculty: true },
       });
     } catch {
-      // A DB connectivity blip (e.g. a serverless Postgres instance waking from
-      // idle) — distinct wording so clients can tell this apart from a genuinely
-      // invalid/expired token and retry instead of forcing a re-login.
+      // A DB connectivity blip (e.g. serverless Postgres waking from idle). Distinct
+      // wording lets clients retry instead of forcing a re-login — the web and mobile
+      // API clients match on "temporarily".
       throw new UnauthorizedException('Session verification is temporarily unavailable. Please retry.');
     }
 
@@ -55,7 +59,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       studentId: user.student?.id,
       facultyId: user.faculty?.id,
       departmentId: user.student?.departmentId || user.faculty?.departmentId,
-      permissions: [],
     };
   }
 }

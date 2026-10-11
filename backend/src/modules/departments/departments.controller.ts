@@ -1,36 +1,38 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DepartmentsService } from './departments.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Roles } from '../../common/decorators';
+import { RoleGroups } from '../../common/constants/role-groups';
+import { CreateDepartmentDto } from './dto/departments.dto';
 
 @ApiTags('Departments & Academic Programs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('departments')
 export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get list of institutional departments and accreditation data' })
-  async findAll() {
+  @ApiOperation({ summary: 'List departments with headcounts, HOD, accreditation and budget' })
+  findAll() {
     return this.departmentsService.findAll();
   }
 
   @Get('curriculum')
-  @ApiOperation({ summary: 'Get current curriculum list and syllabus delivery percentages' })
-  async getCurriculum() {
+  @ApiOperation({ summary: 'List subjects across all departments' })
+  getCurriculum() {
     return this.departmentsService.getCurriculum();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get specific department info' })
-  async findOne(@Param('id') id: string) {
+  @ApiOperation({ summary: 'Department by id or code' })
+  findOne(@Param('id') id: string) {
     return this.departmentsService.findById(id);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create new department' })
-  async create(@Body() body: any) {
-    return this.departmentsService.create(body);
+  @Roles(...RoleGroups.ADMINS)
+  @ApiOperation({ summary: 'Admin: create a department' })
+  create(@Body() dto: CreateDepartmentDto) {
+    return this.departmentsService.create(dto);
   }
 }

@@ -1,21 +1,27 @@
-export type UserRole =
-  | "STUDENT"
-  | "FACULTY"
-  | "ADMIN"
-  | "HOD"
-  | "ACCOUNTANT"
-  | "EXAM_OFFICER"
-  | "LIBRARIAN"
-  | "PLACEMENT_OFFICER"
-  | "HOSTEL_WARDEN"
-  | "TRANSPORT_MANAGER";
+/**
+ * App-wide types shared across features. Each type mirrors a backend response
+ * (endpoint noted above it) — keep them in sync with backend/src/modules/*.
+ */
 
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'ADMIN'
+  | 'HOD'
+  | 'FACULTY'
+  | 'STUDENT'
+  | 'ACCOUNTANT'
+  | 'EXAM_OFFICER'
+  | 'LIBRARIAN'
+  | 'PLACEMENT_OFFICER'
+  | 'HOSTEL_WARDEN'
+  | 'TRANSPORT_MANAGER';
+
+/** POST /auth/login → user */
 export interface MobileUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  avatarUrl?: string;
   department?: string;
   designation?: string;
   rollNumber?: string;
@@ -24,17 +30,38 @@ export interface MobileUser {
   overallAttendance?: number;
 }
 
-export interface StudentScheduleItem {
+export type SlotStatus = 'UPCOMING' | 'LIVE' | 'COMPLETED';
+
+/** GET /timetable/today */
+export interface TodaySlot {
   id: string;
   time: string;
   code: string;
   subject: string;
   faculty: string;
   room: string;
-  isLab?: boolean;
-  status: "UPCOMING" | "LIVE" | "COMPLETED" | "CANCELLED";
+  section: string;
+  period: number;
+  isLab: boolean;
+  status: SlotStatus;
 }
 
+/** GET /timetable/my */
+export interface TimetableSlot {
+  id: string;
+  dayOfWeek: 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT';
+  period: number;
+  time: string;
+  subjectCode: string;
+  subjectName: string;
+  facultyName: string;
+  roomNumber: string;
+  section: string;
+  isLab: boolean;
+  status: SlotStatus;
+}
+
+/** GET /attendance/summary → subjects[] */
 export interface AttendanceSubjectItem {
   code: string;
   name: string;
@@ -42,11 +69,22 @@ export interface AttendanceSubjectItem {
   attended: number;
   total: number;
   percentage: number;
-  status: "NORMAL" | "WARNING" | "CRITICAL";
+  status: 'NORMAL' | 'WARNING' | 'CRITICAL';
   minRequired: number;
   neededFor75: number;
 }
 
+/** GET /attendance/summary */
+export interface AttendanceSummary {
+  overallPercentage: number;
+  totalAttended: number;
+  totalClasses: number;
+  isDebarred: boolean;
+  statutoryThreshold: number;
+  subjects: AttendanceSubjectItem[];
+}
+
+/** GET /faculty/classes/today */
 export interface FacultyClassItem {
   id: string;
   period: number;
@@ -56,28 +94,97 @@ export interface FacultyClassItem {
   section: string;
   room: string;
   totalStudents: number;
-  markedPresent?: number;
-  status: "UPCOMING" | "LIVE" | "COMPLETED";
+  markedPresent: number;
+  status: SlotStatus;
 }
 
+/** GET /faculty/me/workload */
+export interface FacultyWorkload {
+  facultyId: string;
+  name: string;
+  department: string;
+  weeklyContactHours: number;
+  aicteStandardHours: number;
+  compliancePercentage: number | null;
+  assignedClasses: { day: string; period: number; time: string; code: string; name: string; section: string; room: string }[];
+}
+
+/** GET /students (roster) */
+export interface RosterStudent {
+  id: string;
+  name: string;
+  rollNumber: string;
+  section: string | null;
+  attendancePercent: number;
+}
+
+/** GET /notices */
 export interface NoticeItem {
   id: string;
   title: string;
-  category: "ACADEMIC" | "EXAM" | "CIRCULAR" | "PLACEMENT" | "EMERGENCY";
-  date: string;
-  author: string;
   summary: string;
-  isUrgent?: boolean;
+  category: 'ACADEMIC' | 'EXAM' | 'PLACEMENT' | 'CIRCULAR' | 'EMERGENCY';
+  authorName: string;
+  isUrgent: boolean;
+  publishedAt: string;
 }
 
+/** GET /placement/drives */
 export interface PlacementDriveItem {
   id: string;
-  company: string;
-  logo: string;
-  role: string;
+  companyName: string;
+  roleTitle: string;
   ctc: string;
-  eligibility: string;
-  deadline: string;
-  status: "ELIGIBLE" | "APPLIED" | "SHORTLISTED" | "OFFERED";
   location: string;
+  deadline: string;
+  minCgpa: number;
+  status: 'LIVE' | 'CLOSED';
+  myApplicationStatus: 'APPLIED' | 'SHORTLISTED' | 'INTERVIEW_SCHEDULED' | 'OFFERED' | 'REJECTED' | null;
+}
+
+/** GET /exams/grade-card */
+export interface GradeCard {
+  rollNumber: string;
+  studentName: string;
+  program: string;
+  semester: number;
+  resultStatus: string;
+  sgpa: number | null;
+  cgpa: number;
+  totalCreditsEarned: number;
+  backlogs: number;
+  subjects: {
+    code: string;
+    title: string;
+    credits: number;
+    totalMarks: number | null;
+    maxMarks: number | null;
+    grade: string | null;
+    status: 'PASS' | 'FAIL' | 'PENDING';
+  }[];
+}
+
+/** GET /assignments */
+export interface AssignmentItem {
+  id: string;
+  subjectCode: string;
+  subjectName: string;
+  title: string;
+  description: string;
+  deadline: string;
+  faculty: string;
+  maxMarks: number;
+  mySubmissionStatus: 'PENDING' | 'SUBMITTED' | 'EVALUATED' | 'RESUBMITTED' | 'LATE' | null;
+  myMarks: number | null;
+}
+
+/** GET /attendance/petitions/me */
+export interface PetitionItem {
+  id: string;
+  subjectCode: string | null;
+  subjectName: string | null;
+  date: string;
+  period: number;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
 }

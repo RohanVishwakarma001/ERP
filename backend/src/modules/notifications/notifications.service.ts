@@ -1,46 +1,44 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
-const MOCK_NOTIFICATIONS = [
-  {
-    id: 'ntf-01',
-    title: 'Admit Card Available',
-    message: 'Your End-Semester Theory Admit Card for Even Sem 2026 is ready for download.',
-    category: 'EXAM',
-    isRead: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'ntf-02',
-    title: 'Fee Payment Verified',
-    message: 'Receipt JBIT/REC/2026/0942 generated successfully for INR 42,500.',
-    category: 'FEE',
-    isRead: false,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'ntf-03',
-    title: 'New Assignment Published',
-    message: 'Prof. Ananya Sen uploaded Lab Report requirements for Cloud Computing.',
-    category: 'ASSIGNMENT',
-    isRead: true,
-    createdAt: new Date().toISOString(),
-  },
-];
+const NOTIFICATION_PAGE_SIZE = 50;
 
 @Injectable()
 export class NotificationsService {
   constructor(private prisma: PrismaService) {}
 
   async getMyNotifications(userId: string) {
-    return MOCK_NOTIFICATIONS;
+    const [items, unreadCount] = await Promise.all([
+      this.prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: NOTIFICATION_PAGE_SIZE,
+      }),
+      this.prisma.notification.count({ where: { userId, isRead: false } }),
+    ]);
+    return {
+      unreadCount,
+      items: items.map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        category: n.category,
+        link: n.link,
+        isRead: n.isRead,
+        createdAt: n.createdAt.toISOString(),
+      })),
+    };
   }
 
-  async markAsRead(id: string) {
-    return { success: true, message: 'Notification marked as read.' };
+  /** Scoped by userId so one user can never mark another's notification. */
+  async markAsRead(id: string, userId: string) {
+    const { count } = await this.prisma.notification.updateMany({ where: { id, userId }, data: { isRead: true } });
+    if (count === 0) throw new NotFoundException('Notification not found.');
+    return { success: true };
   }
 
   async markAllAsRead(userId: string) {
-    return { success: true, message: 'All notifications marked as read.' };
+    const { count } = await this.prisma.notification.updateMany({ where: { userId, isRead: false }, data: { isRead: true } });
+    return { success: true, updated: count };
   }
 }

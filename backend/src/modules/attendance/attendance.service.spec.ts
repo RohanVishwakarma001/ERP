@@ -1,7 +1,7 @@
-import { BadRequestException, ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AttendanceService } from './attendance.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 
 describe('AttendanceService (Critical Business Logic Tests)', () => {
   let service: AttendanceService;
@@ -14,7 +14,6 @@ describe('AttendanceService (Critical Business Logic Tests)', () => {
 
   beforeEach(() => {
     mockPrisma = {
-      isConnected: true,
       subject: { findUnique: jest.fn().mockResolvedValue(subject) },
       section: { findFirst: jest.fn().mockResolvedValue(section) },
       student: {
@@ -41,12 +40,47 @@ describe('AttendanceService (Critical Business Logic Tests)', () => {
   });
 
   describe('Statutory 75% Attendance & Debarment Calculations', () => {
-    it('should calculate attendance percentage accurately', async () => {
+    const recordFor = (code: string, status: string) => ({
+      status,
+      session: { subject: { code, name: code }, faculty: { user: { name: 'Dr. Test' } } },
+    });
+
+    it('computes per-subject and overall percentages from real records', async () => {
+      mockPrisma.attendanceRecord.findMany.mockResolvedValue([
+        recordFor('CS-601', 'PRESENT'),
+        recordFor('CS-601', 'PRESENT'),
+        recordFor('CS-601', 'EXCUSED'),
+        recordFor('CS-601', 'ABSENT'),
+        recordFor('CS-602', 'LATE'),
+        recordFor('CS-602', 'ABSENT'),
+      ]);
+
       const summary = await service.getStudentSummary('stu-01');
-      expect(summary).toBeDefined();
+
       expect(summary.statutoryThreshold).toBe(75);
-      expect(summary.overallPercentage).toBeGreaterThanOrEqual(0);
-      expect(summary.overallPercentage).toBeLessThanOrEqual(100);
+      expect(summary.totalClasses).toBe(6);
+      expect(summary.totalAttended).toBe(3); // PRESENT + EXCUSED count; LATE does not
+      expect(summary.overallPercentage).toBe(50);
+      expect(summary.isDebarred).toBe(true);
+
+      const cs601 = summary.subjects.find((s) => s.code === 'CS-601')!;
+      expect(cs601.percentage).toBe(75);
+      expect(cs601.neededFor75).toBe(0);
+      const cs602 = summary.subjects.find((s) => s.code === 'CS-602')!;
+      expect(cs602.percentage).toBe(0);
+      expect(cs602.neededFor75).toBe(6); // (0 + 6) / (2 + 6) = 75%
+    });
+
+    it('returns an empty, non-debarred summary when no classes have been conducted', async () => {
+      mockPrisma.attendanceRecord.findMany.mockResolvedValue([]);
+      const summary = await service.getStudentSummary('stu-01');
+      expect(summary.subjects).toEqual([]);
+      expect(summary.isDebarred).toBe(false);
+    });
+
+    it('throws NotFound for an unknown student instead of returning placeholder data', async () => {
+      mockPrisma.student.findFirst.mockResolvedValue(null);
+      await expect(service.getStudentSummary('nobody')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -60,8 +94,7 @@ describe('AttendanceService (Critical Business Logic Tests)', () => {
         geofenceLng: 77.9472,
       });
 
-      const session = await service.generateQrSession({
-        facultyId: 'fac-01',
+      const session = await service.generateQrSession('fac-01', {
         subjectCode: 'CS-602',
         section: 'CSE-6A',
         period: 2,
@@ -170,11 +203,13 @@ describe('AttendanceService (Critical Business Logic Tests)', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('refuses to fabricate success when the database is unreachable', async () => {
-      mockPrisma.isConnected = false;
+    it('propagates database connectivity errors instead of fabricating success', async () => {
+      const dbDown = new Prisma.PrismaClientInitializationError("Can't reach database server", '6.0.0');
+      mockPrisma.attendanceSession.findUnique.mockRejectedValue(dbDown);
       await expect(
         service.scanAndVerifyQr({ qrToken: 'JBIT-QR-anything', studentId: 'stu-01' }),
-      ).rejects.toThrow(ServiceUnavailableException);
+      ).rejects.toBe(dbDown);
+      expect(mockPrisma.attendanceRecord.create).not.toHaveBeenCalled();
     });
   });
 
@@ -182,8 +217,7 @@ describe('AttendanceService (Critical Business Logic Tests)', () => {
     it('persists real AttendanceRecord rows and correctly tallies present/absent/late counts', async () => {
       mockPrisma.attendanceSession.create.mockResolvedValue({ id: 'sess-2' });
 
-      const res = await service.submitBatchAttendance({
-        facultyId: 'fac-01',
+      const res = await service.submitBatchAttendance('fac-01', {
         subjectCode: 'CS-602',
         section: 'CSE-6A',
         period: 2,

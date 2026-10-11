@@ -1,5 +1,3 @@
-import LibraryDashboardPage from "@/app/library/dashboard/page";
+import { LibraryScreen } from "@/components/screens/library-screen";
 
-export default function AdminLibraryPage() {
-  return <LibraryDashboardPage />;
-}
+export default LibraryScreen;

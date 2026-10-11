@@ -1,6 +1,13 @@
 // Full-Stack End-to-End API Integration Test Suite
 const http = require('http');
 
+// Must equal backend SEED_DEFAULT_PASSWORD (never committed).
+const SEED_PASSWORD = process.env.SEED_DEFAULT_PASSWORD;
+if (!SEED_PASSWORD) {
+  console.error('Set SEED_DEFAULT_PASSWORD to the password used when seeding the database.');
+  process.exit(1);
+}
+
 function request(options, data) {
   return new Promise((resolve, reject) => {
     const req = http.request(options, (res) => {
@@ -58,7 +65,7 @@ async function runTests() {
     },
     {
       identifier: 'aarav.sharma@jbitdoon.edu.in',
-      password: 'Jbit@2026',
+      password: SEED_PASSWORD,
       role: 'STUDENT',
     }
   );
@@ -180,7 +187,7 @@ async function runTests() {
     },
     {
       identifier: 'hod.cse@jbitdoon.edu.in',
-      password: 'Jbit@2026',
+      password: SEED_PASSWORD,
       role: 'HOD',
     }
   );

@@ -1,114 +1,94 @@
-import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
-import { tokenStore } from "./token-store";
+import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
+import { env } from "@/config/env";
+import { tokenStore } from "@/lib/auth/token-store";
+import { toApiError } from "./api-error";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+type RetryableConfig = InternalAxiosRequestConfig & { _authRetried?: boolean; _transientRetried?: boolean };
 
-export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-  timeout: 20000,
+/** Delay before retrying a request that hit a cold-starting serverless database. */
+const TRANSIENT_RETRY_DELAY_MS = 2500;
+
+/**
+ * Axios instance for all browser → backend calls.
+ *
+ * - Attaches the in-memory access token (never persisted; see token-store.ts).
+ * - Unwraps the backend's `{ success, data }` envelope so callers get `data` directly.
+ * - Retries once on a transient failure (network blip, 503, or a cold-start 401).
+ * - On 401, silently refreshes the access token via the httpOnly-cookie route and retries once.
+ * - Rejects with a normalized `ApiError` so UI code never inspects raw Axios errors.
+ */
+export const httpClient: AxiosInstance = axios.create({
+  baseURL: env.apiUrl,
+  headers: { "Content-Type": "application/json" },
+  timeout: 20_000,
 });
 
-// Request interceptor to attach the in-memory JWT access token (never localStorage).
-apiClient.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = tokenStore.get();
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+httpClient.interceptors.request.use((config) => {
+  const token = tokenStore.get();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-// Response interceptor: unwrap the backend's { success, data } envelope, and on a 401
-// (expired access token) silently refresh once via the httpOnly-cookie-backed
-// /api/auth/refresh route before failing the request out to the caller.
-let refreshPromise: Promise<string | null> | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = fetch("/api/auth/refresh", { method: "POST" })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = await res.json();
-        tokenStore.set(data.accessToken ?? null);
-        return data.accessToken ?? null;
-      })
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null;
-      });
-  }
-  return refreshPromise;
+/** Exchanges the httpOnly refresh cookie for a new access token. Concurrent callers share one request. */
+export function refreshAccessToken(): Promise<string | null> {
+  refreshInFlight ??= fetch("/api/auth/refresh", { method: "POST" })
+    .then(async (res) => {
+      if (!res.ok) return null;
+      const { accessToken } = (await res.json()) as { accessToken?: string };
+      tokenStore.set(accessToken ?? null);
+      return accessToken ?? null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
 }
 
-apiClient.interceptors.response.use(
-  (response) => {
-    if (
-      response.data &&
-      typeof response.data === "object" &&
-      response.data.success === true &&
-      "data" in response.data
-    ) {
-      return {
-        ...response,
-        data: response.data.data,
-      };
-    }
-    return response;
-  },
-  async (error: AxiosError) => {
-    const originalRequest = error.config as
-      | (InternalAxiosRequestConfig & { _retried?: boolean; _transientRetry?: boolean })
-      | undefined;
+function isTransient(error: AxiosError): boolean {
+  if (!error.response) return true;
+  if (error.response.status === 503) return true;
+  // The backend reports a DB wake-up during JWT validation as a distinct 401.
+  const message = (error.response.data as { error?: { message?: string } } | undefined)?.error?.message;
+  return error.response.status === 401 && /temporarily/i.test(message ?? "");
+}
 
-    // A serverless Postgres instance (Neon) that scaled to zero after being idle takes
-    // a few seconds to wake on the next query — surfaces as a network timeout, a 503
-    // from the backend's DB-connectivity guard, or a 401 with a "temporarily" message
-    // if it happens mid JWT validation. Retry once after a short delay rather than
-    // failing the user's first request of a session.
-    const errBody = error.response?.data as { error?: { message?: string } } | undefined;
-    const isTransientDbWakeup =
-      !error.response ||
-      error.response.status === 503 ||
-      (error.response.status === 401 && errBody?.error?.message?.toLowerCase().includes("temporarily"));
-
-    if (isTransientDbWakeup && originalRequest && !originalRequest._transientRetry) {
-      originalRequest._transientRetry = true;
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-      return apiClient(originalRequest);
-    }
-
-    if (error.response) {
-      const status = error.response.status;
-      const data = error.response.data as { message?: string };
-
-      if (status === 401 && originalRequest && !originalRequest._retried && !originalRequest.url?.includes("/auth/")) {
-        originalRequest._retried = true;
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          originalRequest.headers = originalRequest.headers ?? {};
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          return apiClient(originalRequest);
-        }
-        if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
-          window.location.href = "/login?expired=true";
-        }
-      } else if (status === 403) {
-        if (typeof window !== "undefined") {
-          window.location.href = "/403";
-        }
-      } else if (status === 404) {
-        console.warn("Resource not found:", error.config?.url);
-      } else if (status === 422) {
-        console.warn("Business validation error:", data?.message);
-      } else if (status === 500) {
-        console.error("Internal Server Error:", data?.message || "A server error occurred");
-      }
-    }
-    return Promise.reject(error);
+function unwrapEnvelope(response: AxiosResponse): AxiosResponse {
+  const body = response.data;
+  if (body && typeof body === "object" && body.success === true && "data" in body) {
+    return { ...response, data: body.data };
   }
-);
+  return response;
+}
+
+async function recover(error: AxiosError): Promise<AxiosResponse> {
+  const config = error.config as RetryableConfig | undefined;
+  if (!config) throw toApiError(error);
+
+  if (isTransient(error) && !config._transientRetried) {
+    config._transientRetried = true;
+    await new Promise((resolve) => setTimeout(resolve, TRANSIENT_RETRY_DELAY_MS));
+    return httpClient(config);
+  }
+
+  if (error.response?.status === 401 && !config._authRetried && !config.url?.startsWith("/auth/")) {
+    config._authRetried = true;
+    const token = await refreshAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      return httpClient(config);
+    }
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      // This interceptor lives outside React, so the Next router isn't available. A full
+      // navigation is wanted anyway: it drops every piece of the expired session's state.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = "/login?expired=true";
+    }
+  }
+
+  throw toApiError(error);
+}
+
+httpClient.interceptors.response.use(unwrapEnvelope, recover);

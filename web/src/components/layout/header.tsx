@@ -1,188 +1,198 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Search,
-  Calendar,
-  Bell,
-  ChevronDown,
-  LogOut,
-  Menu,
-} from "lucide-react";
-import { authService } from "@/services/auth.service";
-import { User } from "@/types";
-import { ROLES_CONFIG } from "@/lib/roles";
+import { clsx } from "clsx";
+import { Bell, ChevronDown, LogOut, Menu, Search } from "lucide-react";
+import { useAuth } from "@/features/auth";
+import { useMarkAllNotificationsRead, useNotificationFeed } from "@/features/notifications";
+import { ROLES_CONFIG } from "@/lib/auth/roles";
+import { formatDate } from "@/lib/format";
+import { useDismiss } from "@/lib/use-dismiss";
+import { Avatar } from "../ui/list";
+import { EmptyState, LoadingState } from "../ui/query-state";
 
 interface HeaderProps {
   isSidebarCollapsed: boolean;
-  onOpenMobileMenu?: () => void;
-  onOpenCommandSearch?: () => void;
+  onOpenMobileMenu: () => void;
+  onOpenCommandSearch: () => void;
 }
 
-export function Header({
-  isSidebarCollapsed,
-  onOpenMobileMenu,
-  onOpenCommandSearch,
-}: HeaderProps) {
+function NotificationsMenu() {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(rootRef, open, close, triggerRef);
+
+  const feed = useNotificationFeed();
+  const markAllRead = useMarkAllNotificationsRead();
+  const unread = feed.data?.unreadCount ?? 0;
+
+  return (
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
+        className="relative w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+      >
+        <Bell className="w-5 h-5" />
+        {unread > 0 && (
+          <span aria-hidden className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-red-600 text-white text-[11px] font-semibold leading-4 text-center ring-2 ring-white">
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="fixed sm:absolute inset-x-3 sm:inset-x-auto sm:right-0 top-16 sm:top-auto sm:mt-2 sm:w-96 bg-white border border-border-subtle rounded-2xl shadow-lg z-50 animate-in fade-in slide-in-from-top-2 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+            <h2 className="text-sm font-semibold text-slate-900">Notifications</h2>
+            {unread > 0 && (
+              <button
+                type="button"
+                onClick={() => markAllRead.mutate()}
+                disabled={markAllRead.isPending}
+                className="text-sm font-medium text-primary-container hover:underline disabled:opacity-50"
+              >
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="max-h-[min(24rem,70dvh)] overflow-y-auto p-2">
+            {feed.isPending && <LoadingState label="Loading notifications…" rows={2} />}
+            {feed.isError && <p className="p-3 text-sm text-slate-500">Couldn&apos;t load notifications.</p>}
+            {feed.data?.items.length === 0 && <EmptyState compact icon={<Bell />} title="You're all caught up" />}
+            <ul className="space-y-1">
+              {feed.data?.items.map((n) => (
+                <li key={n.id} className={clsx("p-3 rounded-xl", !n.isRead && "bg-surface-container-low")}>
+                  <div className="flex items-start gap-2">
+                    {!n.isRead && <span className="mt-1.5 w-2 h-2 rounded-full bg-primary-container shrink-0" aria-label="Unread" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">{n.title}</p>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.message}</p>
+                      <p className="text-xs text-slate-500 mt-1">{formatDate(n.createdAt)}</p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileMenu() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    if (typeof window !== "undefined") {
-      return authService.getCurrentUser();
-    }
-    return null;
-  });
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const [isNotifMenuOpen, setIsNotifMenuOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(rootRef, open, close, triggerRef);
 
-  useEffect(() => {
-    if (!currentUser && typeof window !== "undefined") {
-      const user = authService.getCurrentUser();
-      if (!user) {
-        router.push("/login");
-      }
-    }
-  }, [currentUser, router]);
+  if (!user) return null;
 
-  const handleLogout = () => {
-    authService.logout();
-    router.push("/login");
+  const handleLogout = async () => {
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      router.replace("/login");
+    }
   };
 
   return (
+    <div className="relative" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account menu for ${user.name}`}
+        className="flex items-center gap-2.5 h-10 pl-1 pr-2 rounded-xl hover:bg-slate-100 transition-colors text-left"
+      >
+        <Avatar name={user.name} size="sm" />
+        <span className="hidden lg:flex flex-col min-w-0 max-w-40">
+          <span className="text-sm font-medium text-slate-900 truncate leading-tight">{user.name}</span>
+          <span className="text-xs text-slate-500 truncate leading-tight">{ROLES_CONFIG[user.role].label}</span>
+        </span>
+        <ChevronDown aria-hidden className="w-4 h-4 text-slate-400 hidden lg:block" />
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute right-0 mt-2 w-72 bg-white border border-border-subtle rounded-2xl shadow-lg z-50 animate-in fade-in slide-in-from-top-2 overflow-hidden">
+          <div className="p-4 border-b border-border-subtle flex items-center gap-3">
+            <Avatar name={user.name} />
+            <div className="min-w-0">
+              <p className="font-semibold text-sm text-slate-900 truncate">{user.name}</p>
+              <p className="text-xs text-slate-500 truncate">{user.email}</p>
+              <p className="text-xs font-medium text-primary-container mt-0.5">{ROLES_CONFIG[user.role].label}</p>
+            </div>
+          </div>
+          <div className="p-1.5">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleLogout}
+              disabled={signingOut}
+              className="w-full flex items-center gap-2.5 px-3 h-10 text-sm text-red-700 hover:bg-red-50 rounded-xl font-medium disabled:opacity-60"
+            >
+              <LogOut aria-hidden className="w-4 h-4" />
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Header({ isSidebarCollapsed, onOpenMobileMenu, onOpenCommandSearch }: HeaderProps) {
+  return (
     <header
-      className="fixed top-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-[#E2E8F0] shadow-xs z-40 flex items-center justify-between px-6 transition-all duration-300"
-      style={{
-        left: typeof window !== "undefined" && window.innerWidth >= 1024 ? (isSidebarCollapsed ? "4rem" : "16rem") : "0",
-      }}
+      className={clsx(
+        "fixed top-0 right-0 left-0 h-16 bg-white/85 backdrop-blur-xl border-b border-border-subtle z-40 flex items-center justify-between gap-3 px-3 sm:px-6 transition-[left] duration-200",
+        isSidebarCollapsed ? "lg:left-[72px]" : "lg:left-64",
+      )}
     >
-      {/* Left Search and Mobile Menu Button */}
-      <div className="flex items-center gap-3 flex-1 max-w-xl">
+      <div className="flex items-center gap-2 flex-1 max-w-xl min-w-0">
         <button
-          onClick={onOpenMobileMenu}
-          className="lg:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100"
           type="button"
+          onClick={onOpenMobileMenu}
+          aria-label="Open navigation menu"
+          className="lg:hidden w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100"
         >
           <Menu className="w-5 h-5" />
         </button>
-
         <button
-          onClick={onOpenCommandSearch}
           type="button"
-          className="w-full h-9 bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg pl-3 pr-2 flex items-center justify-between text-xs text-slate-400 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer"
+          onClick={onOpenCommandSearch}
+          aria-label="Search pages (Ctrl+K)"
+          className="w-full h-10 bg-slate-100 hover:bg-slate-200/70 rounded-xl pl-3 pr-2 flex items-center justify-between text-sm text-slate-500 transition-colors min-w-0"
         >
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-slate-400" />
-            <span className="truncate">Search students, faculty, rooms, courses (e.g. CS-602, Bhatt)...</span>
-          </div>
-          <div className="flex items-center gap-1 bg-white border border-[#E2E8F0] px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-500 shadow-2xs">
-            <span>⌘</span>
-            <span>K</span>
-          </div>
+          <span className="flex items-center gap-2 min-w-0">
+            <Search aria-hidden className="w-4 h-4 shrink-0" />
+            <span className="truncate">Search pages…</span>
+          </span>
+          <kbd className="hidden sm:inline-block bg-white border border-border-subtle px-1.5 py-0.5 rounded-md text-xs font-sans text-slate-500">
+            Ctrl K
+          </kbd>
         </button>
       </div>
 
-      {/* Right Strip */}
-      <div className="flex items-center gap-3 shrink-0">
-        {/* Academic Session Pill */}
-        <div className="hidden xl:flex items-center gap-2 bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full text-xs">
-          <Calendar className="w-3.5 h-3.5 text-[#0B3B60]" />
-          <span className="font-semibold text-slate-800">AY 2024-25</span>
-          <span className="text-slate-300">•</span>
-          <span className="text-slate-500">Even Semester</span>
-        </div>
-
-        {/* Live Synced Indicator */}
-        <div className="hidden md:flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-full text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Live Synced</span>
-        </div>
-
-        {/* Notifications Button */}
-        <div className="relative">
-          <button
-            onClick={() => setIsNotifMenuOpen(!isNotifMenuOpen)}
-            className="relative p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors flex items-center justify-center"
-            type="button"
-          >
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-600 rounded-full ring-2 ring-white"></span>
-          </button>
-
-          {isNotifMenuOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg p-3 z-50 text-xs animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center justify-between pb-2 border-b border-[#F1F5F9] font-semibold text-slate-800">
-                <span>Recent Notifications</span>
-                <span className="text-[10px] text-[#0B3B60] hover:underline cursor-pointer">Mark all read</span>
-              </div>
-              <div className="py-2 space-y-2">
-                <div className="p-2 rounded-lg bg-[#EFF4FF] border border-[#DCE9FF]">
-                  <p className="font-semibold text-slate-900">Mid-Term Exams start May 12, 2025</p>
-                  <p className="text-slate-500 text-[11px] mt-0.5">Cryptographic hall tickets available for download.</p>
-                </div>
-                <div className="p-2 rounded-lg bg-[#F8FAFC]">
-                  <p className="font-semibold text-slate-800">Microsoft Campus Drive Shortlist Released</p>
-                  <p className="text-slate-500 text-[11px] mt-0.5">22 CSE students invited to Bar Raiser round.</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Profile Card & Role Switcher */}
-        <div className="relative pl-2 border-l border-slate-200">
-          <button
-            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-            className="flex items-center gap-2.5 p-1 rounded-lg hover:bg-slate-100 transition-colors text-left"
-            type="button"
-          >
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-[#0B3B60] text-white flex items-center justify-center font-bold text-xs ring-1 ring-slate-200 shrink-0">
-              {currentUser?.avatarUrl ? (
-                <img
-                  src={currentUser.avatarUrl}
-                  alt={currentUser.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                currentUser?.name?.charAt(0) || "U"
-              )}
-            </div>
-
-            <div className="hidden lg:flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-slate-900 truncate leading-tight">
-                {currentUser?.name || "Dr. Rajesh Bhatt"}
-              </span>
-              <span className="text-[10px] text-slate-500 truncate leading-tight">
-                {currentUser?.role ? ROLES_CONFIG[currentUser.role]?.label : "Admin"}
-              </span>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden lg:block" />
-          </button>
-
-          {/* Profile Dropdown Menu */}
-          {isProfileMenuOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white border border-[#E2E8F0] rounded-xl shadow-xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
-              <div className="pb-2.5 mb-2 border-b border-[#F1F5F9]">
-                <p className="font-bold text-sm text-slate-900">{currentUser?.name}</p>
-                <p className="text-xs text-slate-500">{currentUser?.email}</p>
-                <span className="inline-block mt-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-[#0B3B60]/10 text-[#0B3B60]">
-                  Role: {currentUser?.role}
-                </span>
-              </div>
-
-              <div className="pt-2 mt-1 border-t border-[#F1F5F9]">
-                <button
-                  onClick={handleLogout}
-                  type="button"
-                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        <NotificationsMenu />
+        <div className="w-px h-6 bg-border-subtle mx-1 hidden sm:block" aria-hidden />
+        <ProfileMenu />
       </div>
     </header>
   );

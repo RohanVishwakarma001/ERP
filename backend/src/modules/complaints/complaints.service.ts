@@ -1,210 +1,83 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ComplaintStatus, Prisma, UserRole } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+import { CreateComplaintDto } from './dto/complaints.dto';
 
-const MOCK_COMPLAINTS = [
-  {
-    id: 'cmp-01',
-    ticketNumber: 'TKT-2026-081',
-    title: 'Wi-Fi Access Point Latency in Himalayan Wing (LH-302)',
-    category: 'INFRASTRUCTURE' as const,
-    priority: 'HIGH' as const,
-    subject: 'Wi-Fi Access Point Latency in Himalayan Wing (LH-302)',
-    description: 'During laboratory sessions, the access point in Room LH-302 experiences intermittent DNS timeouts.',
-    reportedBy: 'Aarav Sharma',
-    reportedByRole: 'STUDENT',
-    status: 'IN_PROGRESS' as const,
-    assignedTo: 'Campus IT Network Team',
-    resolutionNotes: 'Network engineering team dispatched replacement AP unit.',
-    createdAt: '2026-05-22T10:00:00Z',
-    comments: [
-      { author: 'Aarav Sharma', text: 'Issue persists during Period 1.', time: '2026-05-22 10:15 AM' },
-      { author: 'Campus IT Helpdesk', text: 'Replacement Cisco Catalyst AP unit configured and tested.', time: '2026-05-22 02:30 PM' },
-    ],
-  },
-  {
-    id: 'cmp-02',
-    ticketNumber: 'TKT-2026-042',
-    title: 'Water cooler filtration unit maintenance in Shivalik Block 2nd Floor',
-    category: 'HOSTEL' as const,
-    priority: 'MEDIUM' as const,
-    subject: 'Water cooler filtration unit maintenance in Shivalik Block 2nd Floor',
-    description: 'Water dispenser requires filter replacement and cooling check.',
-    reportedBy: 'Devendra Bisht',
-    reportedByRole: 'STUDENT',
-    status: 'RESOLVED' as const,
-    assignedTo: 'Estate & Maintenance Division',
-    resolutionNotes: 'RO filter replaced and water TDS checked (112 ppm).',
-    createdAt: '2026-05-19T08:30:00Z',
-    comments: [
-      { author: 'Estate Office', text: 'RO filter replaced and water TDS checked (112 ppm).', time: '2026-05-20 11:00 AM' },
-    ],
-  },
-];
+const COMPLAINT_INCLUDE = {
+  student: { include: { user: { select: { name: true } } } },
+  comments: { orderBy: { createdAt: 'asc' } },
+} satisfies Prisma.ComplaintInclude;
+
+type ComplaintRow = Prisma.ComplaintGetPayload<{ include: typeof COMPLAINT_INCLUDE }>;
+
+/** Stable, human-friendly reference derived from the primary key. */
+const ticketNumberFor = (id: string) => `TKT-${id.slice(0, 8).toUpperCase()}`;
 
 @Injectable()
 export class ComplaintsService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    if (this.prisma.isConnected) {
-      try {
-        const complaints = await this.prisma.complaint.findMany({
-          include: {
-            student: { include: { user: true } },
-            comments: { orderBy: { createdAt: 'asc' } },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        if (complaints && complaints.length > 0) {
-          return complaints.map((c, idx) => ({
-            id: c.id,
-            ticketNumber: `TKT-2026-${String(idx + 1).padStart(3, '0')}`,
-            title: c.subject,
-            category: (['HOSTEL', 'ACADEMIC', 'TRANSPORT', 'INFRASTRUCTURE', 'FINANCE'].includes(c.category)
-              ? c.category
-              : 'INFRASTRUCTURE') as any,
-            priority: (c.priority || 'MEDIUM') as any,
-            subject: c.subject,
-            description: c.description,
-            reportedBy: c.student?.user?.name || 'Aarav Sharma',
-            reportedByRole: 'STUDENT',
-            status: c.status,
-            assignedTo: c.assignedToId || 'Campus Support Team',
-            resolutionNotes: c.resolutionNotes,
-            createdAt: c.createdAt.toISOString(),
-            comments: c.comments.map((cm) => ({
-              author: cm.authorName,
-              text: cm.comment,
-              time: cm.createdAt.toISOString(),
-            })),
-          }));
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return MOCK_COMPLAINTS;
+  /** Students see their own tickets; staff see everything. */
+  async findAll(user: AuthUser) {
+    const complaints = await this.prisma.complaint.findMany({
+      where: this.visibleTo(user),
+      include: COMPLAINT_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return complaints.map((c) => this.toView(c));
   }
 
-  async findById(id: string) {
-    if (this.prisma.isConnected) {
-      try {
-        const c = await this.prisma.complaint.findUnique({
-          where: { id },
-          include: {
-            student: { include: { user: true } },
-            comments: { orderBy: { createdAt: 'asc' } },
-          },
-        });
-        if (c) {
-          return {
-            id: c.id,
-            ticketNumber: 'TKT-2026-081',
-            title: c.subject,
-            category: c.category as any,
-            priority: c.priority as any,
-            subject: c.subject,
-            description: c.description,
-            reportedBy: c.student?.user?.name || 'Aarav Sharma',
-            reportedByRole: 'STUDENT',
-            status: c.status,
-            assignedTo: c.assignedToId || 'Campus Support Team',
-            resolutionNotes: c.resolutionNotes,
-            createdAt: c.createdAt.toISOString(),
-            comments: c.comments.map((cm) => ({
-              author: cm.authorName,
-              text: cm.comment,
-              time: cm.createdAt.toISOString(),
-            })),
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    return MOCK_COMPLAINTS.find((c) => c.id === id) || MOCK_COMPLAINTS[0];
+  async findById(id: string, user: AuthUser) {
+    const complaint = await this.prisma.complaint.findFirst({ where: { id, ...this.visibleTo(user) }, include: COMPLAINT_INCLUDE });
+    if (!complaint) throw new NotFoundException('Complaint not found.');
+    return this.toView(complaint);
   }
 
-  async create(data: any) {
-    if (this.prisma.isConnected) {
-      try {
-        const student = await this.prisma.student.findFirst({
-          where: {
-            OR: [
-              { id: data.studentId },
-              { rollNumber: data.studentId },
-            ],
-          },
-        });
-
-        if (student) {
-          const comp = await this.prisma.complaint.create({
-            data: {
-              studentId: student.id,
-              category: data.category || 'ACADEMIC',
-              priority: data.priority || 'MEDIUM',
-              subject: data.title || data.subject || 'Campus Inquiry',
-              description: data.description || '',
-              status: 'OPEN',
-            },
-          });
-          return {
-            id: comp.id,
-            ticketNumber: `TKT-2026-${Math.floor(100 + Math.random() * 900)}`,
-            title: comp.subject,
-            category: comp.category,
-            priority: comp.priority,
-            description: comp.description,
-            reportedBy: data.studentName || 'Student',
-            reportedByRole: 'STUDENT',
-            status: comp.status,
-            createdAt: comp.createdAt.toISOString(),
-            comments: [],
-          };
-        }
-      } catch {
-        // Fallback
-      }
-    }
-
-    const newTicket = {
-      id: `cmp-${Date.now()}`,
-      ticketNumber: `TKT-2026-${Math.floor(100 + Math.random() * 900)}`,
-      title: data.title || data.subject || 'Campus Inquiry',
-      category: data.category || 'ACADEMIC',
-      priority: data.priority || 'MEDIUM',
-      subject: data.title || data.subject || 'Campus Inquiry',
-      description: data.description || '',
-      reportedBy: data.studentName || 'Aarav Sharma',
-      reportedByRole: 'STUDENT',
-      status: 'OPEN' as const,
-      createdAt: new Date().toISOString(),
-      comments: [],
-    };
-    MOCK_COMPLAINTS.unshift(newTicket as any);
-    return newTicket;
+  async create(studentId: string, dto: CreateComplaintDto) {
+    const complaint = await this.prisma.complaint.create({
+      data: {
+        studentId,
+        category: dto.category,
+        priority: dto.priority ?? 'MEDIUM',
+        subject: dto.title.trim(),
+        description: dto.description.trim(),
+        status: ComplaintStatus.OPEN,
+      },
+      include: COMPLAINT_INCLUDE,
+    });
+    return this.toView(complaint);
   }
 
-  async addComment(id: string, author: string, text: string) {
-    if (this.prisma.isConnected) {
-      try {
-        await this.prisma.complaintComment.create({
-          data: {
-            complaintId: id,
-            authorId: 'admin-01',
-            authorName: author,
-            comment: text,
-          },
-        });
-      } catch {
-        // Fallback
-      }
-    }
+  async addComment(id: string, user: AuthUser, text: string) {
+    await this.findById(id, user); // enforces visibility
+    const comment = await this.prisma.complaintComment.create({
+      data: { complaintId: id, authorId: user.id, authorName: user.name, comment: text.trim() },
+    });
+    return { author: comment.authorName, text: comment.comment, time: comment.createdAt.toISOString() };
+  }
+
+  private visibleTo(user: AuthUser): Prisma.ComplaintWhereInput {
+    if (user.role !== UserRole.STUDENT) return {};
+    if (!user.studentId) throw new ForbiddenException('This account has no student profile.');
+    return { studentId: user.studentId };
+  }
+
+  private toView(c: ComplaintRow) {
     return {
-      success: true,
-      message: 'Comment added to complaint timeline',
-      comment: { author, text, time: new Date().toISOString() },
+      id: c.id,
+      ticketNumber: ticketNumberFor(c.id),
+      title: c.subject,
+      category: c.category,
+      priority: c.priority,
+      description: c.description,
+      reportedBy: c.student.user.name,
+      reportedByRole: 'STUDENT' as const,
+      status: c.status,
+      assignedTo: c.assignedToId,
+      resolutionNotes: c.resolutionNotes,
+      createdAt: c.createdAt.toISOString(),
+      comments: c.comments.map((cm) => ({ author: cm.authorName, text: cm.comment, time: cm.createdAt.toISOString() })),
     };
   }
 }

@@ -1,172 +1,142 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { Colors, Shadows, Spacing } from '@/constants/theme';
-import { Award, Save, CheckCircle2, ChevronRight } from 'lucide-react-native';
-import { mobileFacultyService } from '@/services/mobile-services';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { Shadows, Spacing } from '@/constants/theme';
+import { Save } from 'lucide-react-native';
+import { QueryState } from '@/components/common/query-state';
+import { useRecordMarks, useRoster, useWorkload, type AssessmentType } from '@/features/faculty';
 
-interface StudentMarkItem {
-  id: string;
-  roll: string;
-  name: string;
-  marks: string;
-  maxMarks: number;
-}
+const ASSESSMENTS: { key: AssessmentType; label: string; maxMarks: number }[] = [
+  { key: 'INTERNAL_CIA_1', label: 'CIA 1', maxMarks: 30 },
+  { key: 'INTERNAL_CIA_2', label: 'CIA 2', maxMarks: 30 },
+  { key: 'PRACTICAL', label: 'Practical', maxMarks: 50 },
+];
 
+/** Enter one assessment's marks for one of the faculty member's own classes (POST /exams/marks). */
 export function FacultyMarksView() {
-  const [selectedExam, setSelectedExam] = useState<'CIA_1' | 'CIA_2' | 'PRACTICAL'>('CIA_1');
-  const [marksData, setMarksData] = useState<StudentMarkItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const workload = useWorkload();
+  const recordMarks = useRecordMarks();
+  const [classKey, setClassKey] = useState<string | null>(null);
+  const [assessment, setAssessment] = useState(ASSESSMENTS[0]);
+  // Raw text per student; blank means "not entered" and is not submitted.
+  const [entries, setEntries] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    let isMounted = true;
-    async function loadStudents() {
-      setIsLoading(true);
-      try {
-        const students = await mobileFacultyService.getRosterStudents();
-        if (isMounted) {
-          if (Array.isArray(students) && students.length > 0) {
-            setMarksData(
-              students.map((s: any, idx: number) => ({
-                id: s.id,
-                roll: s.rollNumber || `22010200${idx + 1}`,
-                name: s.user?.name || s.name || `Student ${idx + 1}`,
-                marks: '24',
-                maxMarks: selectedExam === 'PRACTICAL' ? 50 : 30,
-              }))
-            );
-          } else {
-            setMarksData([]);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load roster students', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    }
-    loadStudents();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedExam]);
+  const myClasses = useMemo(() => {
+    const unique = new Map<string, { code: string; name: string; section: string }>();
+    for (const c of workload.data?.assignedClasses ?? []) unique.set(`${c.code}|${c.section}`, c);
+    return [...unique.entries()].map(([key, c]) => ({ key, ...c }));
+  }, [workload.data]);
+  const selected = myClasses.find((c) => c.key === classKey) ?? myClasses[0];
+  const roster = useRoster(selected?.section);
 
-  const handleMarkChange = (id: string, val: string) => {
-    setMarksData((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, marks: val } : item))
-    );
+  const reset = (next: () => void) => {
+    next();
+    setEntries({});
   };
 
-  const handleSaveMarks = async () => {
-    setIsSubmitting(true);
-    try {
-      await mobileFacultyService.submitExamMarks({
-        examType: selectedExam,
-        subjectCode: 'CS-801',
-        records: marksData.map((m) => ({
-          studentId: m.id,
-          marksObtained: Number(m.marks) || 0,
-          maxMarks: m.maxMarks,
-        })),
-      });
-      Alert.alert('Marks Saved', 'Evaluation ledger saved and forwarded to COE Controller.');
-    } catch (err: any) {
-      console.error('Failed to submit exam marks', err);
-      Alert.alert(
-        'Save Failed',
-        err?.response?.data?.message || 'Could not save marks. Please check your connection and try again.'
+  const save = () => {
+    if (!selected) return;
+    const records: { studentId: string; marksObtained: number }[] = [];
+    for (const [studentId, raw] of Object.entries(entries)) {
+      if (raw.trim() === '') continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 0 || value > assessment.maxMarks) {
+        Alert.alert('Invalid marks', `Marks must be between 0 and ${assessment.maxMarks}.`);
+        return;
+      }
+      records.push({ studentId, marksObtained: value });
+    }
+    if (records.length === 0) {
+      Alert.alert('Nothing to save', 'Enter marks for at least one student.');
+      return;
+    }
+    const missing = (roster.data?.length ?? 0) - records.length;
+    const doSave = () =>
+      recordMarks.mutate(
+        { subjectCode: selected.code, section: selected.section, assessmentType: assessment.key, maxMarks: assessment.maxMarks, records },
+        { onSuccess: (res) => Alert.alert('Marks saved', res.message) },
       );
-    } finally {
-      setIsSubmitting(false);
+    if (missing > 0) {
+      Alert.alert('Some marks are blank', `${missing} student(s) have no marks entered and will be skipped.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save anyway', onPress: doSave },
+      ]);
+    } else {
+      doSave();
     }
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* 1. Header Card */}
       <View style={styles.headerCard}>
-        <Text style={styles.headerSubtitle}>UTU CONTINUOUS ASSESSMENT</Text>
-        <Text style={styles.headerTitle}>Mark Evaluation Portal</Text>
-        <Text style={styles.headerMeta}>CS-801 Distributed Systems • CSE-8B (54 Students)</Text>
+        <Text style={styles.headerSubtitle}>CONTINUOUS ASSESSMENT</Text>
+        <Text style={styles.headerTitle}>Marks Entry</Text>
+        <Text style={styles.headerMeta}>
+          {selected ? `${selected.code} ${selected.name} • ${selected.section}` : workload.isPending ? 'Loading your classes…' : 'No classes assigned'}
+        </Text>
+
+        {myClasses.length > 1 && (
+          <View style={styles.examTabs}>
+            {myClasses.map((c) => (
+              <TouchableOpacity key={c.key} style={[styles.examTab, selected?.key === c.key && styles.activeExamTab]} onPress={() => reset(() => setClassKey(c.key))}>
+                <Text style={[styles.examTabText, selected?.key === c.key && styles.activeExamTabText]}>
+                  {c.code} {c.section}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         <View style={styles.examTabs}>
-          {[
-            { key: 'CIA_1', label: 'Mid-Sem CIA 1 (30)' },
-            { key: 'CIA_2', label: 'Mid-Sem CIA 2 (30)' },
-            { key: 'PRACTICAL', label: 'Practical Lab (50)' },
-          ].map((tab) => (
-            <TouchableOpacity
-              key={tab.key}
-              style={[styles.examTab, selectedExam === tab.key && styles.activeExamTab]}
-              onPress={() => setSelectedExam(tab.key as any)}
-            >
-              <Text style={[styles.examTabText, selectedExam === tab.key && styles.activeExamTabText]}>
-                {tab.label}
+          {ASSESSMENTS.map((a) => (
+            <TouchableOpacity key={a.key} style={[styles.examTab, assessment.key === a.key && styles.activeExamTab]} onPress={() => reset(() => setAssessment(a))}>
+              <Text style={[styles.examTabText, assessment.key === a.key && styles.activeExamTabText]}>
+                {a.label} ({a.maxMarks})
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
-      {/* 2. Marks Entry Table */}
-      <View style={styles.marksList}>
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableColHeader, { flex: 1 }]}>STUDENT</Text>
-          <Text style={[styles.tableColHeader, { width: 90, textAlign: 'center' }]}>
-            MARKS / 30
-          </Text>
-        </View>
-
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#0B3B60" style={{ marginVertical: 24 }} />
-        ) : marksData.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No registered students found for evaluation.</Text>
+      {selected && (
+        <View style={styles.marksList}>
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableColHeader, { flex: 1 }]}>STUDENT</Text>
+            <Text style={[styles.tableColHeader, { width: 90, textAlign: 'center' }]}>MARKS / {assessment.maxMarks}</Text>
           </View>
-        ) : (
-          marksData.map((item) => (
-            <View key={item.id} style={styles.markRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.studentRoll}>{item.roll}</Text>
-                <Text style={styles.studentName}>{item.name}</Text>
-              </View>
+          <QueryState query={roster} emptyText={`No students enrolled in ${selected.section}.`}>
+            {(students) =>
+              students.map((s) => (
+                <View key={s.id} style={styles.markRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.studentRoll}>{s.rollNumber}</Text>
+                    <Text style={styles.studentName}>{s.name}</Text>
+                  </View>
+                  <View style={styles.inputWrapper}>
+                    <TextInput
+                      style={styles.markInput}
+                      keyboardType="numeric"
+                      placeholder="—"
+                      value={entries[s.id] ?? ''}
+                      onChangeText={(val) => setEntries((prev) => ({ ...prev, [s.id]: val.replace(/[^0-9.]/g, '') }))}
+                      maxLength={5}
+                      accessibilityLabel={`Marks for ${s.name}`}
+                    />
+                    <Text style={styles.maxText}>/ {assessment.maxMarks}</Text>
+                  </View>
+                </View>
+              ))
+            }
+          </QueryState>
+        </View>
+      )}
 
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.markInput}
-                  keyboardType="numeric"
-                  value={item.marks}
-                  onChangeText={(val) => handleMarkChange(item.id, val)}
-                  maxLength={2}
-                />
-                <Text style={styles.maxText}>/ {item.maxMarks}</Text>
-              </View>
-            </View>
-          ))
-        )}
-      </View>
-
-      {/* 3. Action */}
-      <TouchableOpacity
-        style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
-        onPress={handleSaveMarks}
-        disabled={isSubmitting}
-      >
-        {isSubmitting ? (
+      <TouchableOpacity style={[styles.saveBtn, recordMarks.isPending && { opacity: 0.7 }]} onPress={save} disabled={recordMarks.isPending || !selected}>
+        {recordMarks.isPending ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
         ) : (
           <>
             <Save size={16} color="#FFFFFF" />
-            <Text style={styles.saveBtnText}>Save &amp; Forward to Exam Controller</Text>
+            <Text style={styles.saveBtnText}>Save Marks</Text>
           </>
         )}
       </TouchableOpacity>
@@ -177,11 +147,11 @@ export function FacultyMarksView() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
   },
   content: {
     padding: Spacing.lg,
-    paddingBottom: 100,
+    paddingBottom: 32,
     gap: Spacing.lg,
   },
   headerCard: {
@@ -192,7 +162,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   headerSubtitle: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
     color: '#93C5FD',
     letterSpacing: 0.5,
@@ -203,7 +173,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   headerMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#BAE6FD',
   },
   examTabs: {
@@ -223,7 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   examTabText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
     color: '#93C5FD',
   },
@@ -235,23 +205,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
     overflow: 'hidden',
     ...Shadows.sm,
   },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#E5E5EA',
   },
   tableColHeader: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '800',
-    color: '#64748B',
+    color: '#636366',
     letterSpacing: 0.5,
   },
   markRow: {
@@ -260,10 +230,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F2F2F7',
   },
   studentRoll: {
-    fontSize: 10,
+    fontSize: 12,
     color: '#0B3B60',
     fontWeight: '700',
     fontFamily: 'monospace',
@@ -271,7 +241,7 @@ const styles = StyleSheet.create({
   studentName: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#1C1C1E',
     marginTop: 1,
   },
   inputWrapper: {
@@ -284,16 +254,16 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+    borderColor: '#D1D1D6',
+    backgroundColor: '#F2F2F7',
     textAlign: 'center',
     fontSize: 14,
     fontWeight: '800',
-    color: '#0F172A',
+    color: '#1C1C1E',
   },
   maxText: {
-    fontSize: 11,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#737378',
     fontWeight: '600',
   },
   saveBtn: {
@@ -318,11 +288,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#E5E5EA',
   },
   emptyText: {
     fontSize: 12,
-    color: '#64748B',
+    color: '#636366',
     fontWeight: '500',
   },
 });

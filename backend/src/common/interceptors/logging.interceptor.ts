@@ -8,6 +8,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Request, Response } from 'express';
+import { pathOnly } from '../utils/redact';
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
@@ -18,7 +19,9 @@ export class LoggingInterceptor implements NestInterceptor {
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
-    const { method, originalUrl } = req;
+    // Path only: query strings can carry codes, tokens and personal search terms.
+    const { method } = req;
+    const originalUrl = pathOnly(req.originalUrl);
     const userAgent = req.get('user-agent') || '';
     const now = Date.now();
 

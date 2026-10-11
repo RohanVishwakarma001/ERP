@@ -1,128 +1,133 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { AuthUser } from '../../common/interfaces/auth-user.interface';
+import { ATTENDANCE_THRESHOLD, isBelowThreshold } from '../../common/utils/attendance-policy';
+import { campusNow, slotStatus } from '../../common/utils/campus-clock';
 
+export type CopilotIntent = 'ATTENDANCE' | 'FEES' | 'SCHEDULE' | 'EXAM' | 'TRANSPORT' | 'GENERAL';
+
+export interface CopilotReply {
+  intent: CopilotIntent;
+  answer: string;
+  data?: Record<string, unknown>;
+}
+
+const INTENT_KEYWORDS: [CopilotIntent, RegExp][] = [
+  ['ATTENDANCE', /attendance|present|absent|75%|debar/],
+  ['FEES', /fee|due|receipt|payment/],
+  ['SCHEDULE', /class|timetable|schedule|lecture|\blab\b|next/],
+  ['EXAM', /exam|admit|hall ticket/],
+  ['TRANSPORT', /bus|transport|route/],
+];
+
+export function detectIntent(query: string): CopilotIntent {
+  const text = query.toLowerCase();
+  return INTENT_KEYWORDS.find(([, pattern]) => pattern.test(text))?.[0] ?? 'GENERAL';
+}
+
+const HELP_TEXT =
+  'I can answer from your live records: attendance against the 75% rule, pending fees, today\'s classes, your next exam, and your bus pass.';
+const STUDENT_ONLY = 'That question needs a student account — I answer it from your own academic records.';
+
+/**
+ * Rule-based campus assistant. Every answer is grounded in the caller's own
+ * database records; when data doesn't exist, it says so instead of guessing.
+ */
 @Injectable()
 export class AiService {
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Grounded AI Campus Copilot Engine:
-   * Resolves questions strictly via authenticated student context and database records
-   */
-  async processCampusQuery(userId: string, studentId: string, query: string) {
-    if (!query || !query.trim()) {
-      throw new BadRequestException('Query message cannot be empty');
+  async processCampusQuery(user: AuthUser, query: string): Promise<CopilotReply> {
+    const intent = detectIntent(query);
+    const studentId = user.role === UserRole.STUDENT ? user.studentId : undefined;
+
+    switch (intent) {
+      case 'ATTENDANCE':
+        return studentId ? this.attendance(studentId) : { intent, answer: STUDENT_ONLY };
+      case 'FEES':
+        return studentId ? this.fees(studentId) : { intent, answer: STUDENT_ONLY };
+      case 'SCHEDULE':
+        return studentId ? this.schedule(studentId) : { intent, answer: STUDENT_ONLY };
+      case 'EXAM':
+        return studentId ? this.nextExam(studentId) : { intent, answer: STUDENT_ONLY };
+      case 'TRANSPORT':
+        return studentId ? this.transport(studentId) : { intent, answer: STUDENT_ONLY };
+      default:
+        return { intent: 'GENERAL', answer: HELP_TEXT };
     }
+  }
 
-    const text = query.toLowerCase();
-
-    // Query student from database
-    let student: any = null;
-    if (this.prisma.isConnected) {
-      try {
-        student = await this.prisma.student.findFirst({
-          where: {
-            OR: [
-              { id: studentId },
-              { userId },
-              { rollNumber: studentId },
-            ],
-          },
-          include: {
-            user: true,
-            fees: true,
-            attendanceRecords: true,
-          },
-        });
-      } catch {
-        // Fallback
-      }
-    }
-
-    const studentName = student?.user?.name || 'Aarav Sharma';
-    const overallAtt = student?.overallAttendance || 84.5;
-    const isDebarred = overallAtt < 75.0;
-
-    // Tool 1: Attendance intent
-    if (text.includes('attendance') || text.includes('present') || text.includes('absent') || text.includes('75%')) {
-      const msg = `Hello ${studentName}, your overall attendance is currently ${overallAtt}% across your registered subjects. You are ${isDebarred ? 'BELOW the statutory 75% threshold and currently flagged for debarment review under UTU Ordinance 14(B)' : 'comfortably above the statutory 75% UTU threshold. Your hall ticket eligibility is confirmed'}.`;
-      return {
-        reply: msg,
-        answer: msg,
-        intent: 'ATTENDANCE_SUMMARY',
-        groundedData: {
-          overallPercentage: overallAtt,
-          statutoryThreshold: 75.0,
-          status: isDebarred ? 'CRITICAL' : 'SAFE',
-        },
-      };
-    }
-
-    // Tool 2: Fees intent
-    if (text.includes('fee') || text.includes('due') || text.includes('receipt') || text.includes('payment')) {
-      const feeRecord = student?.fees?.[0];
-      const pendingDue = feeRecord ? feeRecord.pendingAmount : 0;
-      const msg = pendingDue > 0
-        ? `You have a pending semester balance of ₹${pendingDue.toLocaleString('en-IN')}. Please clear it before the upcoming examination date to release your hall ticket.`
-        : `Your institutional fees have been fully cleared with zero pending dues. Official digitally verified receipts are archived in your Fee Ledger.`;
-
-      return {
-        reply: msg,
-        answer: msg,
-        intent: 'FEES_INQUIRY',
-        groundedData: {
-          totalFee: feeRecord?.totalAmount || 55000,
-          pendingDue,
-          status: pendingDue > 0 ? 'PENDING' : 'CLEARED',
-        },
-      };
-    }
-
-    // Tool 3: Timetable / Next class intent
-    if (text.includes('class') || text.includes('next') || text.includes('lab') || text.includes('schedule') || text.includes('timetable')) {
-      const msg = 'Today you have Compiler Design (CS-601) in LH-302 with Dr. V. K. Bhatt at 09:00 AM, Cloud Computing (CS-602) in Lab-401 at 10:15 AM, and Full-Stack Web Lab (CS-605P) at 01:30 PM in the Turing Innovation Lab.';
-      return {
-        reply: msg,
-        answer: msg,
-        intent: 'SCHEDULE_INQUIRY',
-        groundedData: {
-          nextClass: 'CS-601 Compiler Design',
-          time: '09:00 - 10:00 AM',
-          room: 'LH-302 (Himalayan Wing)',
-        },
-      };
-    }
-
-    // Tool 4: Exam intent
-    if (text.includes('exam') || text.includes('admit') || text.includes('hall ticket')) {
-      const msg = 'UTU Even Semester Examinations commence from June 2, 2026 starting with CS-601 Compiler Design in LH-302. Your digital admit card has been verified with zero active backlogs.';
-      return {
-        reply: msg,
-        answer: msg,
-        intent: 'EXAM_INQUIRY',
-        groundedData: {
-          firstExamDate: '02 June 2026',
-          admitCardStatus: 'GENERATED',
-        },
-      };
-    }
-
-    // Tool 5: Transport intent
-    if (text.includes('bus') || text.includes('transport') || text.includes('route')) {
-      const msg = 'Campus Transit Route 12 (UK-07-PA-4012, Driver: Sardar Baljit Singh) is active with live GPS tracking. Departure from Clock Tower is at 07:30 AM.';
-      return {
-        reply: msg,
-        answer: msg,
-        intent: 'TRANSPORT_INQUIRY',
-      };
-    }
-
-    // General academic assistant fallback
-    const defaultMsg = `I am your JBIT Campus Copilot. I can query your live database records for statutory attendance (75% threshold), examination schedules, pending fees, or today's timetable.`;
+  private async attendance(studentId: string): Promise<CopilotReply> {
+    const s = await this.prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { overallAttendance: true } });
+    const below = isBelowThreshold(s.overallAttendance);
     return {
-      reply: defaultMsg,
-      answer: defaultMsg,
-      intent: 'GENERAL_ASSISTANCE',
+      intent: 'ATTENDANCE',
+      answer: below
+        ? `Your overall attendance is ${s.overallAttendance}%, below the ${ATTENDANCE_THRESHOLD}% requirement of UTU Ordinance 14(B).`
+        : `Your overall attendance is ${s.overallAttendance}%, above the ${ATTENDANCE_THRESHOLD}% requirement.`,
+      data: { overallPercentage: s.overallAttendance, threshold: ATTENDANCE_THRESHOLD, belowThreshold: below },
+    };
+  }
+
+  private async fees(studentId: string): Promise<CopilotReply> {
+    const agg = await this.prisma.studentFee.aggregate({ where: { studentId }, _sum: { pendingAmount: true, totalAmount: true } });
+    const pending = agg._sum.pendingAmount ?? 0;
+    return {
+      intent: 'FEES',
+      answer:
+        agg._sum.totalAmount == null
+          ? 'No fee account has been set up for you yet.'
+          : pending > 0
+            ? `You have ₹${pending.toLocaleString('en-IN')} in pending dues.`
+            : 'You have no pending dues.',
+      data: { pendingDues: pending },
+    };
+  }
+
+  private async schedule(studentId: string): Promise<CopilotReply> {
+    const now = campusNow();
+    const student = await this.prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { sectionId: true } });
+    if (!now.dayCode || !student.sectionId) return { intent: 'SCHEDULE', answer: 'You have no classes scheduled today.' };
+
+    const slots = await this.prisma.timetableEntry.findMany({
+      where: { sectionId: student.sectionId, dayOfWeek: now.dayCode },
+      include: { subject: true, room: true },
+      orderBy: { period: 'asc' },
+    });
+    const remaining = slots.filter((t) => slotStatus(t.dayOfWeek, t.startTime, t.endTime, now) !== 'COMPLETED');
+    if (remaining.length === 0) return { intent: 'SCHEDULE', answer: 'You have no more classes today.' };
+
+    const list = remaining.map((t) => `${t.subject.name} (${t.subject.code}) at ${t.startTime} in ${t.room.roomNumber}`);
+    return { intent: 'SCHEDULE', answer: `Remaining today: ${list.join('; ')}.`, data: { remainingCount: remaining.length } };
+  }
+
+  private async nextExam(studentId: string): Promise<CopilotReply> {
+    const student = await this.prisma.student.findUniqueOrThrow({ where: { id: studentId }, select: { programId: true, semester: true } });
+    const exam = await this.prisma.examSchedule.findFirst({
+      where: { date: { gte: new Date() }, subject: { programId: student.programId, semester: student.semester } },
+      include: { subject: true },
+      orderBy: { date: 'asc' },
+    });
+    if (!exam) return { intent: 'EXAM', answer: 'No upcoming exams are scheduled for you yet.' };
+    const date = exam.date.toISOString().slice(0, 10);
+    return {
+      intent: 'EXAM',
+      answer: `Your next exam is ${exam.subject.name} (${exam.subject.code}) on ${date} at ${exam.startTime}.`,
+      data: { subjectCode: exam.subject.code, date, startTime: exam.startTime },
+    };
+  }
+
+  private async transport(studentId: string): Promise<CopilotReply> {
+    const pass = await this.prisma.transportAssignment.findUnique({
+      where: { studentId },
+      include: { bus: { include: { route: true } } },
+    });
+    if (!pass) return { intent: 'TRANSPORT', answer: 'You do not have a transport pass.' };
+    return {
+      intent: 'TRANSPORT',
+      answer: `Your bus is ${pass.bus.busNumber} on ${pass.bus.route.routeNumber} (${pass.bus.route.name}), departing ${pass.bus.route.departureTime}. Your stop: ${pass.pickupStop}.`,
+      data: { routeNumber: pass.bus.route.routeNumber, busNumber: pass.bus.busNumber },
     };
   }
 }

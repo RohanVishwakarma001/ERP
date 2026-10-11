@@ -1,302 +1,163 @@
 "use client";
 
-import React from "react";
 import Link from "next/link";
+import { Bed, BellRing, Briefcase, Building2, Bus, CalendarCheck2, CalendarDays, ChevronRight, Gavel, Sparkles, Users2, Wallet } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import {
-  studentService,
-  departmentService,
-  facultyService,
-  placementService,
-  noticeService,
-  operationsService,
-  examService,
-} from "@/services/domain-services";
-import { authService } from "@/services/auth.service";
-import {
-  Building2,
-  Users2,
-  Briefcase,
-  CalendarCheck2,
-  ArrowRight,
-  BellRing,
-  Bus,
-  Bed,
-  BookOpen,
-  Sparkles,
-} from "lucide-react";
+import { buttonClasses } from "@/components/ui/button";
+import { CardLink, SectionCard } from "@/components/ui/section-card";
+import { QueryState } from "@/components/ui/query-state";
+import { IconTile, ListRow } from "@/components/ui/list";
+import { WelcomePanel } from "@/components/ui/welcome-panel";
+import { useAuth } from "@/features/auth";
+import { useExecutiveSummary } from "@/features/analytics";
+import { useNotices } from "@/features/notices";
+import { usePlacementDrives } from "@/features/placement";
+import { useExamCycles } from "@/features/exams";
+import { useHostels, useTransportRoutes } from "@/features/campus";
+import { formatCurrency, formatDate, formatNumber, formatPercent, ratio } from "@/lib/format";
 
-export default function AdminOverviewDashboard() {
-  const currentUser = authService.getCurrentUser();
+const SHORTCUTS = [
+  { href: "/admin/students", title: "Attendance debarment", subtitle: "Ordinance 14(B) reviews", icon: <Gavel /> },
+  { href: "/admin/departments", title: "Departments", subtitle: "Headcounts & accreditation", icon: <Building2 /> },
+  { href: "/admin/timetable", title: "Timetable", subtitle: "Weekly schedule by section", icon: <CalendarDays /> },
+  { href: "/admin/exams", title: "Exams & seating", subtitle: "Cycles, papers & halls", icon: <CalendarCheck2 /> },
+];
 
-  const { data: students = [] } = useQuery({
-    queryKey: ["students"],
-    queryFn: studentService.getStudents,
-  });
+export default function AdminDashboardPage() {
+  const { user } = useAuth();
+  const summary = useExecutiveSummary();
+  const notices = useNotices();
+  const drives = usePlacementDrives();
+  const cycles = useExamCycles();
+  const routes = useTransportRoutes();
+  const hostels = useHostels();
 
-  const { data: departments = [] } = useQuery({
-    queryKey: ["departments"],
-    queryFn: departmentService.getDepartments,
-  });
-
-  const { data: notices = [] } = useQuery({
-    queryKey: ["notices"],
-    queryFn: noticeService.getNotices,
-  });
-
-  const { data: routes = [] } = useQuery({
-    queryKey: ["routes"],
-    queryFn: operationsService.getTransportRoutes,
-  });
-
-  const { data: drives = [] } = useQuery({
-    queryKey: ["drives"],
-    queryFn: placementService.getDrives,
-  });
-
-  const { data: examCycles = [] } = useQuery({
-    queryKey: ["examCycles"],
-    queryFn: examService.getCycles,
-  });
-
-  const totalStudentsCount = students.length > 0 ? (students.length * 35).toLocaleString() : "1,120";
-  const eligibleStudents = students.filter((s) => s.debarmentStatus !== "DEBARRED");
-  const eligiblePercentage =
-    students.length > 0
-      ? ((eligibleStudents.length / students.length) * 100).toFixed(1)
-      : "84.5";
-
-  const adminName = currentUser?.name || "Col. Rajesh Verma (Retd.)";
-  const activeBus = routes[0];
-  const activeCycle = examCycles[0];
+  const s = summary.data;
+  const liveDrives = drives.data?.filter((d) => d.status === "LIVE") ?? [];
+  const nextCycle = cycles.data?.find((c) => c.startDate && new Date(c.startDate) >= new Date()) ?? cycles.data?.[0];
+  const beds = (hostels.data ?? []).reduce((acc, h) => ({ total: acc.total + h.totalBeds, used: acc.used + h.occupiedBeds }), { total: 0, used: 0 });
 
   return (
-    <DashboardLayout role="ADMIN">
+    <DashboardLayout>
       <div className="flex flex-col gap-6">
-        {/* Top Executive Himalayan Banner matching Stitch UI */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#002541] via-[#0b3b60] to-[#003c5e] text-white p-6 sm:p-8 shadow-md">
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold text-sky-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Campus Online • Dehradun Foothills Sub-Center</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight font-headline">
-                Executive Academic Administration Hub
-              </h1>
-              <p className="text-xs sm:text-sm text-sky-100 max-w-2xl leading-relaxed">
-                Welcome, {adminName}. Institutional telemetry indicates 100% UTU compliance across {departments.length} departments, {totalStudentsCount} enrolled students, and ongoing examination scheduling.
-              </p>
-            </div>
+        <WelcomePanel
+          eyebrow={new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+          title="Administration overview"
+          subtitle={
+            s
+              ? `Welcome, ${user?.name}. ${formatNumber(s.totalEnrolledStudents)} students and ${formatNumber(s.activeFacultyCount)} faculty across ${s.departmentsCount} departments.`
+              : `Welcome, ${user?.name}.`
+          }
+          actions={
+            <Link href="/admin/ai-copilot" className={buttonClasses("secondary")}>
+              <Sparkles aria-hidden className="w-4 h-4" /> Ask AI Copilot
+            </Link>
+          }
+        />
 
-            <div className="flex items-center gap-2 shrink-0">
+        <QueryState query={summary}>
+          {(s) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <KpiCard
+                title="Enrolled students"
+                value={formatNumber(s.totalEnrolledStudents)}
+                icon={<Users2 />}
+                footerLeft={`Avg attendance ${formatPercent(s.overallCampusAttendance)}`}
+                footerRight={`${formatNumber(s.debarredStudentsCount)} debarred`}
+                footerRightColor={s.debarredStudentsCount > 0 ? "warning" : "success"}
+              />
+              <KpiCard title="Departments" value={s.departmentsCount} icon={<Building2 />} footerLeft={`${formatNumber(s.activeFacultyCount)} faculty members`} />
+              <KpiCard
+                title="Fee collection"
+                value={formatPercent(s.feeCollectionRate)}
+                icon={<Wallet />}
+                footerLeft={`${formatCurrency(s.totalFeeCollected)} collected`}
+                footerRight={`of ${formatCurrency(s.totalFeeBilled)}`}
+              />
+              <KpiCard
+                title="Placement offers"
+                value={formatNumber(s.placementOffersCount)}
+                icon={<Briefcase />}
+                footerLeft={`${liveDrives.length} drive${liveDrives.length === 1 ? "" : "s"} open`}
+              />
+            </div>
+          )}
+        </QueryState>
+
+        <section aria-labelledby="shortcuts-heading">
+          <h2 id="shortcuts-heading" className="text-[15px] font-semibold text-slate-900 font-headline mb-3">
+            Shortcuts
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {SHORTCUTS.map((link) => (
               <Link
-                href="/admin/ai-copilot"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#0B3B60] hover:bg-sky-50 font-bold text-xs shadow-md transition-all cursor-pointer"
+                key={link.href}
+                href={link.href}
+                className="group p-4 rounded-2xl border border-border-subtle bg-white shadow-xs hover:border-border-strong hover:shadow-sm transition-all flex items-center gap-3"
               >
-                <Sparkles className="w-4 h-4 text-[#0B3B60]" />
-                <span>Launch AI Copilot</span>
+                <IconTile>{link.icon}</IconTile>
+                <span className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-900 block">{link.title}</span>
+                  <span className="text-xs text-slate-500 block mt-0.5">{link.subtitle}</span>
+                </span>
+                <ChevronRight aria-hidden className="w-4 h-4 text-slate-400 group-hover:text-slate-700 shrink-0" />
               </Link>
-            </div>
+            ))}
           </div>
-        </div>
+        </section>
 
-        {/* 4 Core High-Level KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <KpiCard
-            title="Total Student Cadre"
-            value={totalStudentsCount}
-            unit="Enrolled"
-            icon={<Users2 className="w-5 h-5 text-[#0B3B60]" />}
-            footerLeft={`${eligiblePercentage}% Eligible for Hall Tickets`}
-            footerRight="Ordinance 14(B)"
-            footerRightColor="success"
-          />
-          <KpiCard
-            title="Academic Departments"
-            value={departments.length.toString()}
-            unit="Units"
-            icon={<Building2 className="w-5 h-5 text-[#0B3B60]" />}
-            footerLeft={`${departments.filter((d) => d.nbaAccredited || d.accreditationStatus === "NBA Tier-1").length} NBA Accreditations`}
-            footerRight="100% UTU Affiliated"
-            footerRightColor="success"
-          />
-          <KpiCard
-            title="Placement Drives"
-            value={drives.length.toString()}
-            unit="Active"
-            icon={<Briefcase className="w-5 h-5 text-emerald-600" />}
-            footerLeft="Highest Package: ₹22.50 LPA"
-            footerRight="TCS, AWS, Adobe"
-            footerRightColor="info"
-          />
-          <KpiCard
-            title="Examination Cycle"
-            value="June 02"
-            unit="Commences"
-            icon={<CalendarCheck2 className="w-5 h-5 text-amber-600" />}
-            footerLeft={activeCycle?.name || "UTU End-Term 2026"}
-            footerRight="Seating Ready"
-            footerRightColor="warning"
-          />
-        </div>
-
-        {/* Operational Modules Quick Jump Grid */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900 font-headline">Enterprise Command Shortcuts</h2>
-            <span className="text-xs text-slate-500">Quick Access to Core Workflows</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <Link
-              href="/admin/departments"
-              className="p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0B3B60] hover:shadow-md transition-all group flex items-start justify-between"
-            >
-              <div>
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#0B3B60] block">
-                  Department Workload
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Faculty ratios &amp; NBA accreditation
-                </span>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0B3B60] transition-colors" />
-            </Link>
-
-            <Link
-              href="/admin/students"
-              className="p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0B3B60] hover:shadow-md transition-all group flex items-start justify-between"
-            >
-              <div>
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#0B3B60] block">
-                  Attendance Debarment
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Ordinance 14(B) &amp; Condonation
-                </span>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0B3B60] transition-colors" />
-            </Link>
-
-            <Link
-              href="/admin/timetable"
-              className="p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0B3B60] hover:shadow-md transition-all group flex items-start justify-between"
-            >
-              <div>
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#0B3B60] block">
-                  Timetable Engine
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Clash detection &amp; room matrix
-                </span>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0B3B60] transition-colors" />
-            </Link>
-
-            <Link
-              href="/admin/exams"
-              className="p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#0B3B60] hover:shadow-md transition-all group flex items-start justify-between"
-            >
-              <div>
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#0B3B60] block">
-                  COE Seating &amp; Mark Lock
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Cryptographic UTU verification
-                </span>
-              </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#0B3B60] transition-colors" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Dual Panel: Recent Circulars & Fleet Status */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Recent Campus Circulars */}
-          <div className="lg:col-span-7 bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-              <div className="flex items-center gap-2">
-                <BellRing className="w-4 h-4 text-[#0B3B60]" />
-                <h3 className="font-bold text-sm text-slate-900 font-headline">Campus Circulars &amp; Notices</h3>
-              </div>
-              <Badge variant="primary">UTU Master Feed</Badge>
+          <SectionCard className="lg:col-span-7" title="Latest notices" icon={<BellRing className="w-5 h-5" />} action={<CardLink href="/admin/notices">Manage</CardLink>}>
+            <QueryState query={notices} empty={{ title: "No notices published yet", icon: <BellRing /> }}>
+              {(list) => (
+                <ul className="divide-y divide-border-subtle -mt-1">
+                  {list.slice(0, 5).map((n) => (
+                    <li key={n.id} className="py-3 first:pt-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {n.isUrgent && <Badge variant="error">Urgent</Badge>}
+                        <p className="text-sm font-medium text-slate-900">{n.title}</p>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">{n.summary}</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {n.authorName} · {formatDate(n.publishedAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </QueryState>
+          </SectionCard>
+
+          <SectionCard className="lg:col-span-5" title="Campus operations">
+            <div className="-mx-3">
+              <ListRow
+                href="/admin/exams"
+                leading={<IconTile>
+                  <CalendarCheck2 />
+                </IconTile>}
+                title={nextCycle?.name ?? "No exam cycle scheduled"}
+                subtitle={nextCycle?.startDate ? `${formatDate(nextCycle.startDate)} – ${formatDate(nextCycle.endDate)} · ${nextCycle.totalPapers} papers` : "—"}
+              />
+              <ListRow
+                href="/admin/transport"
+                leading={<IconTile>
+                  <Bus />
+                </IconTile>}
+                title={`${routes.data?.length ?? 0} bus routes`}
+                subtitle={`${routes.data?.filter((r) => r.status === "ON_ROUTE").length ?? 0} reporting live GPS · ${formatNumber(routes.data?.reduce((n, r) => n + r.passHolders, 0) ?? 0)} passes`}
+              />
+              <ListRow
+                href="/admin/hostel"
+                leading={<IconTile>
+                  <Bed />
+                </IconTile>}
+                title="Hostel occupancy"
+                subtitle={beds.total ? `${formatPercent(ratio(beds.used, beds.total))} of ${beds.total} beds · ${hostels.data?.length ?? 0} buildings` : "No hostel data"}
+              />
             </div>
-
-            <div className="space-y-3">
-              {notices.map((n) => (
-                <div
-                  key={n.id}
-                  className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-1 hover:border-slate-300 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold text-slate-400">{n.publisher}</span>
-                    <span className="text-[10px] text-slate-400">{n.date}</span>
-                  </div>
-                  <h4 className="font-bold text-xs text-slate-900">{n.title}</h4>
-                  <p className="text-[11px] text-slate-500 line-clamp-2">{n.summary}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Infrastructure & Telematics Status */}
-          <div className="lg:col-span-5 bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm space-y-4">
-            <h3 className="font-bold text-sm text-slate-900 font-headline pb-3 border-b border-[#F1F5F9]">
-              Campus Operations &amp; Telematics
-            </h3>
-
-            <div className="space-y-3">
-              {/* Bus Telematics */}
-              <div className="p-3 rounded-xl bg-[#EFF4FF] border border-[#DCE9FF] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#0B3B60] text-white flex items-center justify-center">
-                    <Bus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">
-                      {activeBus?.busNumber ? `Bus #${activeBus.busNumber} Active` : "Campus Transit Active"}
-                    </h5>
-                    <p className="text-[10px] text-slate-500">
-                      {activeBus?.routeTitle || "Clock Tower to JBIT Campus"}
-                    </p>
-                  </div>
-                </div>
-                <Badge variant="success">En Route</Badge>
-              </div>
-
-              {/* Hostel Status */}
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
-                    <Bed className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">Hostel Allocation Ratio</h5>
-                    <p className="text-[10px] text-slate-500">Shivalik &amp; Alaknanda Hostels</p>
-                  </div>
-                </div>
-                <span className="font-bold text-xs text-slate-800">88.5% Occupied</span>
-              </div>
-
-              {/* Central Library Circulation */}
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                    <BookOpen className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-xs text-slate-900">Central Library Circulation</h5>
-                    <p className="text-[10px] text-slate-500">RFID Circulation Desk Online</p>
-                  </div>
-                </div>
-                <span className="font-bold text-xs text-emerald-700">100% Operational</span>
-              </div>
-            </div>
-          </div>
+          </SectionCard>
         </div>
       </div>
     </DashboardLayout>

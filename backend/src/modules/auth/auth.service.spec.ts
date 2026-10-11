@@ -2,15 +2,15 @@ import { UnauthorizedException, BadRequestException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../common/email/email.service';
+import { AppConfig } from '../../config';
+import { PrismaService } from '../../infrastructure/prisma/prisma.service';
+import { EmailService } from '../../infrastructure/email/email.service';
 
 describe('AuthService (Authentication & RBAC Logic Tests)', () => {
   let service: AuthService;
   let mockPrisma: any;
   let jwtService: JwtService;
-  let configService: ConfigService;
+  let config: AppConfig;
   let emailService: EmailService;
 
   const activeUser = {
@@ -21,7 +21,7 @@ describe('AuthService (Authentication & RBAC Logic Tests)', () => {
     status: 'ACTIVE',
     deletedAt: null,
     passwordHash: '' as string,
-    student: { id: 'stu-01', rollNumber: '220102048', semester: 6, cgpa: 8.92, departmentId: 'dept-cse', overallAttendance: 84.5 },
+    student: { id: 'stu-01', rollNumber: '220102048', semester: 6, cgpa: 8.92, departmentId: 'dept-cse', department: { name: 'Computer Science & Engineering' }, overallAttendance: 84.5 },
     faculty: null,
   };
 
@@ -48,13 +48,13 @@ describe('AuthService (Authentication & RBAC Logic Tests)', () => {
     };
 
     jwtService = new JwtService({ secret: 'test-secret' });
-    configService = {
-      getOrThrow: jest.fn((key: string) => `test-${key}`),
-      get: jest.fn(),
-    } as unknown as ConfigService;
+    config = {
+      jwtAccessSecret: 'test-JWT_ACCESS_SECRET',
+      jwtRefreshSecret: 'test-JWT_REFRESH_SECRET',
+    } as unknown as AppConfig;
     emailService = { sendOtpEmail: jest.fn().mockResolvedValue(undefined) } as unknown as EmailService;
 
-    service = new AuthService(mockPrisma as PrismaService, jwtService, configService, emailService);
+    service = new AuthService(mockPrisma as PrismaService, jwtService, config, emailService);
   });
 
   describe('User Login Flow', () => {
@@ -165,6 +165,7 @@ describe('AuthService (Authentication & RBAC Logic Tests)', () => {
       const res = await service.forgotPassword({ identifier: 'nonexistent@jbitdoon.edu.in' });
 
       expect(res.message).toContain('If an account matching');
+      expect(res.message).not.toContain('nonexistent');
       expect(emailService.sendOtpEmail).not.toHaveBeenCalled();
     });
   });

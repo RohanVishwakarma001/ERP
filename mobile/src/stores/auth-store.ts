@@ -1,234 +1,106 @@
 import { create } from 'zustand';
-import { MobileUser, UserRole } from '@/types';
-import { apiClient, storageHelper } from '@/services/api-client';
+import type { MobileUser } from '@/types';
+import { httpClient, onSessionExpired } from '@/lib/api/http-client';
+import { getErrorMessage, toApiError } from '@/lib/api/api-error';
+import { STORAGE_KEYS, secureStorage } from '@/lib/secure-storage';
+import { queryClient } from '@/lib/query-client';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
 interface AuthState {
   user: MobileUser | null;
-  token: string | null;
-  refreshToken: string | null;
   authStatus: AuthStatus;
-  isAuthenticated: boolean;
-  isLoading: boolean;
+  isLoggingIn: boolean;
   error: string | null;
   restoreSession: () => Promise<void>;
-  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (identifier: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  setUser: (user: MobileUser) => void;
   clearError: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: MobileUser;
+}
+
+const signedOut = { user: null, authStatus: 'unauthenticated' as const, isLoggingIn: false };
+
+/**
+ * Session state for the whole app. Tokens live in secure storage (never in this
+ * store); the cached user lets the app open offline, and is refreshed from
+ * /auth/me whenever the network is available.
+ */
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: null,
-  refreshToken: null,
   authStatus: 'loading',
-  isAuthenticated: false,
-  isLoading: false,
+  isLoggingIn: false,
   error: null,
 
   restoreSession: async () => {
-    set({ authStatus: 'loading' });
+    const [token, cachedUser] = await Promise.all([
+      secureStorage.get(STORAGE_KEYS.accessToken),
+      secureStorage.get(STORAGE_KEYS.user),
+    ]);
+    if (!token || !cachedUser) {
+      set(signedOut);
+      return;
+    }
+
+    let user: MobileUser;
     try {
-      const storedToken = await storageHelper.getItem('jbit_auth_token');
-      const storedUserJson = await storageHelper.getItem('jbit_auth_user');
-      const storedRefresh = await storageHelper.getItem('jbit_auth_refresh');
-
-      if (!storedToken || !storedUserJson) {
-        set({
-          user: null,
-          token: null,
-          refreshToken: null,
-          authStatus: 'unauthenticated',
-          isAuthenticated: false,
-          isLoading: false,
-        });
-        return;
-      }
-
-      let parsedUser: MobileUser;
-      try {
-        parsedUser = JSON.parse(storedUserJson);
-      } catch {
-        await storageHelper.removeItem('jbit_auth_token');
-        await storageHelper.removeItem('jbit_auth_user');
-        set({
-          user: null,
-          token: null,
-          refreshToken: null,
-          authStatus: 'unauthenticated',
-          isAuthenticated: false,
-          isLoading: false,
-        });
-        return;
-      }
-
-      // Check with backend /auth/me for active session validation
-      try {
-        const meRes = await apiClient.get<any>('/auth/me');
-        const meData = meRes.data;
-        if (meData?.id || meData?.email) {
-          const updatedUser: MobileUser = {
-            ...parsedUser,
-            name: meData.name || parsedUser.name,
-            email: meData.email || parsedUser.email,
-            role: (meData.role || parsedUser.role) as UserRole,
-            department: meData.department || parsedUser.department,
-            rollNumber: meData.rollNumber || meData.student?.rollNumber || parsedUser.rollNumber,
-            semester: meData.semester || meData.student?.semester || parsedUser.semester,
-            cgpa: meData.cgpa || meData.student?.cgpa || parsedUser.cgpa,
-          };
-          await storageHelper.setItem('jbit_auth_user', JSON.stringify(updatedUser));
-          set({
-            user: updatedUser,
-            token: storedToken,
-            refreshToken: storedRefresh,
-            authStatus: 'authenticated',
-            isAuthenticated: true,
-            isLoading: false,
-          });
-          return;
-        }
-      } catch (err: any) {
-        // If 401 Unauthorized, session has expired
-        if (err?.response?.status === 401) {
-          await storageHelper.removeItem('jbit_auth_token');
-          await storageHelper.removeItem('jbit_auth_refresh');
-          await storageHelper.removeItem('jbit_auth_user');
-          set({
-            user: null,
-            token: null,
-            refreshToken: null,
-            authStatus: 'unauthenticated',
-            isAuthenticated: false,
-            isLoading: false,
-          });
-          return;
-        }
-        // If network offline, continue with stored credentials
-      }
-
-      set({
-        user: parsedUser,
-        token: storedToken,
-        refreshToken: storedRefresh,
-        authStatus: 'authenticated',
-        isAuthenticated: true,
-        isLoading: false,
-      });
+      user = JSON.parse(cachedUser);
     } catch {
-      set({
-        user: null,
-        token: null,
-        refreshToken: null,
-        authStatus: 'unauthenticated',
-        isAuthenticated: false,
-        isLoading: false,
-      });
+      await secureStorage.clearSession();
+      set(signedOut);
+      return;
+    }
+
+    try {
+      // Confirms the session is still valid (the HTTP client refreshes it if needed).
+      await httpClient.get('/auth/me');
+      set({ user, authStatus: 'authenticated' });
+    } catch (err) {
+      if (toApiError(err).status === 401) {
+        await secureStorage.clearSession();
+        set(signedOut);
+      } else {
+        // Offline or server unreachable: keep the cached session and let screens show their own errors.
+        set({ user, authStatus: 'authenticated' });
+      }
     }
   },
 
-  login: async (identifier: string, password: string) => {
-    set({ isLoading: true, error: null });
+  login: async (identifier, password) => {
+    set({ isLoggingIn: true, error: null });
     try {
-      const res = await apiClient.post<any>('/auth/login', {
-        identifier: identifier.trim(),
-        password: password.trim(),
-      });
-
-      const data = res.data;
-      const token = data?.accessToken || data?.token;
-      const refreshToken = data?.refreshToken;
-      const rawUser = data?.user;
-
-      if (!token || !rawUser) {
-        throw new Error('Authentication response invalid. Please try again.');
-      }
-
-      const authenticatedUser: MobileUser = {
-        id: rawUser.id,
-        name: rawUser.name,
-        email: rawUser.email,
-        role: rawUser.role as UserRole,
-        department: rawUser.department || 'Computer Science & Engineering',
-        designation: rawUser.designation,
-        rollNumber: rawUser.rollNumber,
-        semester: rawUser.semester,
-        cgpa: rawUser.cgpa,
-        overallAttendance: rawUser.overallAttendance ?? 84.5,
-        avatarUrl:
-          rawUser.avatarUrl ||
-          (rawUser.role === 'STUDENT'
-            ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-            : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'),
-      };
-
-      // Persist in secure storage
-      await storageHelper.setItem('jbit_auth_token', token);
-      if (refreshToken) {
-        await storageHelper.setItem('jbit_auth_refresh', refreshToken);
-      }
-      await storageHelper.setItem('jbit_auth_user', JSON.stringify(authenticatedUser));
-      await storageHelper.setItem('jbit_auth_role', authenticatedUser.role);
-
-      set({
-        user: authenticatedUser,
-        token,
-        refreshToken: refreshToken || null,
-        isAuthenticated: true,
-        authStatus: 'authenticated',
-        isLoading: false,
-        error: null,
-      });
-
-      return { success: true };
-    } catch (err: any) {
-      let errMsg = 'Invalid institutional credentials. Please check your Roll/Email/Password.';
-      if (err?.response?.data?.message) {
-        errMsg = Array.isArray(err.response.data.message)
-          ? err.response.data.message[0]
-          : err.response.data.message;
-      } else if (err?.message && !err?.response) {
-        errMsg = 'Unable to reach JBIT Campus ERP server. Check your network.';
-      }
-
-      set({
-        isLoading: false,
-        error: errMsg,
-      });
-
-      return { success: false, error: errMsg };
+      const { data } = await httpClient.post<LoginResponse>('/auth/login', { identifier: identifier.trim(), password });
+      await Promise.all([
+        secureStorage.set(STORAGE_KEYS.accessToken, data.accessToken),
+        secureStorage.set(STORAGE_KEYS.refreshToken, data.refreshToken),
+        secureStorage.set(STORAGE_KEYS.user, JSON.stringify(data.user)),
+      ]);
+      set({ user: data.user, authStatus: 'authenticated', isLoggingIn: false });
+      return true;
+    } catch (err) {
+      set({ isLoggingIn: false, error: getErrorMessage(err) });
+      return false;
     }
   },
 
   logout: async () => {
-    try {
-      await apiClient.post('/auth/logout').catch(() => {});
-    } catch {
-      // Ignore network errors on logout
-    }
-
-    try {
-      await storageHelper.removeItem('jbit_auth_token');
-      await storageHelper.removeItem('jbit_auth_refresh');
-      await storageHelper.removeItem('jbit_auth_user');
-      await storageHelper.removeItem('jbit_auth_role');
-    } catch {
-      // Safe fallback
-    }
-
-    set({
-      user: null,
-      token: null,
-      refreshToken: null,
-      isAuthenticated: false,
-      authStatus: 'unauthenticated',
-      isLoading: false,
-      error: null,
-    });
+    // Best effort: revoke refresh tokens server-side; local sign-out happens regardless.
+    await httpClient.post('/auth/logout').catch(() => undefined);
+    await secureStorage.clearSession();
+    queryClient.clear();
+    set({ ...signedOut, error: null });
   },
 
-  setUser: (user: MobileUser) => set({ user }),
   clearError: () => set({ error: null }),
 }));
+
+// If the HTTP client can't refresh an expired session, sign the user out everywhere.
+onSessionExpired(() => {
+  queryClient.clear();
+  useAuthStore.setState(signedOut);
+});

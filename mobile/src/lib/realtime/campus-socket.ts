@@ -1,20 +1,14 @@
 import { io, Socket } from 'socket.io-client';
-import { storageHelper, getApiBaseUrl } from './api-client';
-
-export function getSocketOrigin(): string {
-  return getApiBaseUrl().replace(/\/api\/v\d+\/?$/, '');
-}
+import { env } from '@/config/env';
+import { STORAGE_KEYS, secureStorage } from '@/lib/secure-storage';
 
 let socket: Socket | null = null;
 
-/** Connects (or reuses an existing connection) to the authenticated campus-events gateway. */
-export async function getCampusSocket(): Promise<Socket> {
+/** Connects (or reuses the connection) to the authenticated `campus-events` gateway. */
+export async function connectCampusSocket(): Promise<Socket> {
   if (socket?.connected) return socket;
-
-  const token = await storageHelper.getItem('jbit_auth_token');
-  const origin = getSocketOrigin();
-  socket = io(`${origin}/campus-events`, {
-    auth: { token },
+  socket = io(`${env.socketOrigin}/campus-events`, {
+    auth: { token: await secureStorage.get(STORAGE_KEYS.accessToken) },
     transports: ['websocket'],
     reconnection: true,
   });
