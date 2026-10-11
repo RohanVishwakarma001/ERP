@@ -72,7 +72,7 @@ backend/
 │
 ├── prisma/
 │   ├── schema.prisma              # 40+ normalized relational entities
-│   └── seed.ts                    # Institutional seed script for JBIT Dehradun
+│   └── clear-data.ts              # One-off: wipe all rows (npm run db:clear -- --yes)
 │
 ├── Dockerfile                     # Multi-stage production container
 ├── package.json                   # Scripts and dependencies
@@ -116,8 +116,7 @@ npx prisma generate
 # 3. Run database migrations (when PostgreSQL is active)
 npm run prisma:migrate
 
-# 4. Seed development database
-npm run prisma:seed
+# 4. Set SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD in .env — the account is created on start
 
 # 5. Typecheck TypeScript strict mode
 npm run typecheck
@@ -145,22 +144,20 @@ When the server runs, interactive documentation with pre-configured request payl
 
 ## 7. Authentication & RBAC
 
-The API enforces strict multi-role authentication. 10 institutional roles are supported:
+The API enforces strict multi-role authentication. There are no demo or built-in accounts.
 
-| Role | Demo Identifier | Password | Access Capabilities |
-|---|---|---|---|
-| `SUPER_ADMIN` / `ADMIN` | `registrar@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Universal institutional administration |
-| `HOD` | `hod.cse@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Department oversight, faculty load, leave approval |
-| `FACULTY` | `FAC-CSE-001` | `$SEED_DEFAULT_PASSWORD` | Classes, rotating QR generation, marks entry |
-| `STUDENT` | `220102048` | `$SEED_DEFAULT_PASSWORD` | Attendance, QR scanner, grade cards, fee ledger |
-| `ACCOUNTANT` | `finance@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Fee structure, payment reconciliation, receipts |
-| `EXAM_OFFICER` | `coe@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Seating matrix, mark locking, result publishing |
-| `PLACEMENT_OFFICER` | `tpo@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Recruiter scoring, drive eligibility, LOI signing |
-| `HOSTEL_WARDEN` | `warden@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Bed allocations, outpass approvals |
-| `TRANSPORT_MANAGER` | `transport@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | Fleet GPS tracking, Route 12 passes |
-| `LIBRARIAN` | `library@jbitdoon.edu.in` | `$SEED_DEFAULT_PASSWORD` | RFID book checkouts, inventory, overdue fines |
+**Administrators come from `.env`.** On every start the API creates or updates:
 
-Demo accounts exist only after running the seed script, and all share the password you set in `SEED_DEFAULT_PASSWORD` — there is no built-in default. Never seed a production database.
+| Variables | Role |
+|---|---|
+| `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME` | `SUPER_ADMIN` — required in production |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME` | `ADMIN` — optional |
+
+Change the email (the sign-in name) or password and restart to apply it; a password change signs the account out everywhere. Removing an account's variables disables it.
+
+**Everyone else is created in the app.** An admin signs in on the web portal, adds departments (**Departments**) and programs and sections (**Programs & Courses**), then creates the accounts under **Users** — students, faculty, HODs, accountants, exam officers, librarians, placement officers, hostel wardens and transport managers. Only the super admin can create other admins. People sign in with their email (students may also use their roll number, faculty their employee code) and can reset their password with *Forgot password* (requires SMTP).
+
+To remove old demo data from a database, run `npm run db:clear -- --yes` once (it deletes **all** rows but keeps the schema), then restart the API.
 
 ---
 

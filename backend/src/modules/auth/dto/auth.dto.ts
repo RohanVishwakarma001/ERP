@@ -1,17 +1,11 @@
 import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { STRONG_PASSWORD, STRONG_PASSWORD_MESSAGE } from '../../../common/validators/password';
 
-/**
- * bcrypt only hashes the first 72 bytes, so anything longer would silently be
- * truncated. At least 8 chars with upper, lower, digit and symbol.
- */
-const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,72}$/;
-const STRONG_PASSWORD_MESSAGE =
-  'Password must be 8–72 characters and include upper- and lower-case letters, a number and a symbol.';
 const OTP_PATTERN = /^\d{6}$/;
 
 export class LoginDto {
-  @ApiProperty({ example: 'aarav.sharma@jbitdoon.edu.in', description: 'Institutional email or roll/faculty ID' })
+  @ApiProperty({ example: 'name@jbitdoon.edu.in', description: 'Institutional email or roll/faculty ID' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(254)
@@ -39,7 +33,7 @@ export class RefreshTokenDto {
 }
 
 export class VerifyOtpDto {
-  @ApiProperty({ example: 'aarav.sharma@jbitdoon.edu.in' })
+  @ApiProperty({ example: 'name@jbitdoon.edu.in' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(254)
@@ -52,7 +46,7 @@ export class VerifyOtpDto {
 }
 
 export class ForgotPasswordDto {
-  @ApiProperty({ example: 'aarav.sharma@jbitdoon.edu.in' })
+  @ApiProperty({ example: 'name@jbitdoon.edu.in' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(254)
@@ -60,7 +54,7 @@ export class ForgotPasswordDto {
 }
 
 export class ResetPasswordDto {
-  @ApiProperty({ example: 'aarav.sharma@jbitdoon.edu.in' })
+  @ApiProperty({ example: 'name@jbitdoon.edu.in' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(254)

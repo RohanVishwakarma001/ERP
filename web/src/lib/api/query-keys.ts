@@ -21,6 +21,12 @@ export const queryKeys = {
     all: ["departments"] as const,
     list: ["departments", "list"] as const,
     curriculum: ["departments", "curriculum"] as const,
+    programs: ["departments", "programs"] as const,
+    sections: ["departments", "sections"] as const,
+  },
+  users: {
+    all: ["users"] as const,
+    list: (filters: Record<string, unknown> = {}) => ["users", "list", filters] as const,
   },
   attendance: {
     all: ["attendance"] as const,

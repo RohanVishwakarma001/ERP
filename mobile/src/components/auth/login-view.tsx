@@ -24,7 +24,6 @@ import {
   EyeOff,
   ArrowRight,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react-native';
 
 export function LoginView() {
@@ -53,14 +52,6 @@ export function LoginView() {
 
     // On failure the store exposes the server's message via `error`.
     await login(trimmedId, password);
-  };
-
-  // The seed password is never committed: dev builds read it from mobile/.env.
-  const handleQuickFill = (id: string) => {
-    setIdentifier(id);
-    setPassword(process.env.EXPO_PUBLIC_DEV_SEED_PASSWORD ?? '');
-    setLocalError(null);
-    clearError();
   };
 
   const displayError = localError || error;
@@ -209,47 +200,6 @@ export function LoginView() {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Development Quick-Fill Helper (Strictly DEV only, sets form fields for real auth) */}
-          {__DEV__ && (
-            <View style={styles.devCard}>
-              <View style={styles.devHeader}>
-                <Sparkles size={13} color="#0B3B60" />
-                <Text style={styles.devTitle}>DEV TEST CREDENTIALS (CLICK TO FILL)</Text>
-              </View>
-              <Text style={styles.devSubtitle}>
-                Fills input fields with seeded DB accounts. Always authenticates through backend.
-              </Text>
-              <View style={styles.devChipsRow}>
-                <TouchableOpacity
-                  style={styles.devChip}
-                  onPress={() =>
-                    handleQuickFill('aarav.sharma@jbitdoon.edu.in')
-                  }
-                >
-                  <Text style={styles.devChipText}>Student: Aarav</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.devChip}
-                  onPress={() =>
-                    handleQuickFill('hod.cse@jbitdoon.edu.in')
-                  }
-                >
-                  <Text style={styles.devChipText}>Faculty: Dr. Bhatt</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.devChip}
-                  onPress={() =>
-                    handleQuickFill('registrar@jbitdoon.edu.in')
-                  }
-                >
-                  <Text style={styles.devChipText}>Admin: Registrar</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
 
           {/* Footer Info */}
           <View style={styles.footer}>
@@ -403,51 +353,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
-  },
-  devCard: {
-    width: '100%',
-    maxWidth: 420,
-    marginTop: 16,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
-    padding: 12,
-  },
-  devHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
-  },
-  devTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#0B3B60',
-    letterSpacing: 0.5,
-  },
-  devSubtitle: {
-    fontSize: 12,
-    color: '#636366',
-    marginBottom: 8,
-  },
-  devChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  devChip: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D1D1D6',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  devChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0B3B60',
   },
   footer: {
     alignItems: 'center',

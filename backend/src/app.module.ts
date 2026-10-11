@@ -14,6 +14,7 @@ import { WebSocketModule } from './infrastructure/websocket/websocket.module';
 // Feature modules — one per business domain.
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
+import { UsersModule } from './modules/users/users.module';
 import { StudentsModule } from './modules/students/students.module';
 import { FacultyModule } from './modules/faculty/faculty.module';
 import { DepartmentsModule } from './modules/departments/departments.module';
@@ -49,6 +50,7 @@ import { AuditModule } from './modules/audit/audit.module';
 
     AuthModule,
     HealthModule,
+    UsersModule,
     StudentsModule,
     FacultyModule,
     DepartmentsModule,

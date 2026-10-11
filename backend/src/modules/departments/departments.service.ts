@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
-import { CreateDepartmentDto } from './dto/departments.dto';
+import { CreateDepartmentDto, CreateProgramDto, CreateSectionDto } from './dto/departments.dto';
 
 const DEPARTMENT_INCLUDE = {
   facultyMembers: { where: { deletedAt: null }, include: { user: { select: { name: true, email: true } } } },
@@ -66,6 +66,71 @@ export class DepartmentsService {
       },
     });
     return this.findById(created.id);
+  }
+
+  async listPrograms() {
+    const programs = await this.prisma.program.findMany({
+      include: { department: { select: { code: true } }, _count: { select: { students: { where: { deletedAt: null } } } } },
+      orderBy: { code: 'asc' },
+    });
+    return programs.map((p) => ({
+      id: p.id,
+      code: p.code,
+      name: p.name,
+      departmentId: p.departmentId,
+      departmentCode: p.department.code,
+      durationYears: p.durationYears,
+      totalSemesters: p.totalSemesters,
+      degreeType: p.degreeType,
+      studentCount: p._count.students,
+    }));
+  }
+
+  async createProgram(dto: CreateProgramDto) {
+    if (!(await this.prisma.department.findUnique({ where: { id: dto.departmentId } }))) {
+      throw new BadRequestException('The selected department no longer exists.');
+    }
+    if (dto.totalSemesters > dto.durationYears * 2) {
+      throw new BadRequestException('A program cannot have more than two semesters per year.');
+    }
+    await this.createUnique(
+      () => this.prisma.program.create({ data: dto }),
+      `A program with code ${dto.code} already exists.`,
+    );
+    return this.listPrograms();
+  }
+
+  async listSections() {
+    const sections = await this.prisma.section.findMany({
+      include: { _count: { select: { students: { where: { deletedAt: null } } } } },
+      orderBy: [{ academicYear: 'desc' }, { semester: 'asc' }, { name: 'asc' }],
+    });
+    return sections.map((s) => ({
+      id: s.id,
+      name: s.name,
+      semester: s.semester,
+      academicYear: s.academicYear,
+      capacity: s.capacity,
+      studentCount: s._count.students,
+    }));
+  }
+
+  async createSection(dto: CreateSectionDto) {
+    const [start, end] = dto.academicYear.split('-').map(Number);
+    if (end !== start + 1) throw new BadRequestException('academicYear must span two consecutive years, e.g. 2026-2027.');
+    const existing = await this.prisma.section.findFirst({ where: { name: dto.name, academicYear: dto.academicYear } });
+    if (existing) throw new ConflictException(`Section ${dto.name} already exists for ${dto.academicYear}.`);
+    await this.prisma.section.create({ data: dto });
+    return this.listSections();
+  }
+
+  private async createUnique<T>(create: () => Promise<T>, conflictMessage: string) {
+    try {
+      return await create();
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException(conflictMessage);
+      throw err;
+    }
   }
 
   private async averageAttendanceByDepartment(departmentIds: string[]) {

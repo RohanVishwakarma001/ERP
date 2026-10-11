@@ -28,6 +28,12 @@ export interface PaymentConfig {
   webhookSecret?: string;
 }
 
+export interface BootstrapAccountConfig {
+  email: string;
+  password: string;
+  name?: string;
+}
+
 /**
  * Typed, validated access to configuration. Modules read settings through this
  * class rather than `process.env` or stringly-typed `ConfigService.get()` calls,
@@ -81,6 +87,23 @@ export class AppConfig {
 
   get jwtRefreshSecret(): string {
     return this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
+  }
+
+  /** The super-admin account defined in `.env`, or `null` when unset (development only). */
+  get superAdminAccount(): BootstrapAccountConfig | null {
+    return this.bootstrapAccount('SUPER_ADMIN');
+  }
+
+  /** The optional admin account defined in `.env`. */
+  get adminAccount(): BootstrapAccountConfig | null {
+    return this.bootstrapAccount('ADMIN');
+  }
+
+  private bootstrapAccount(prefix: 'SUPER_ADMIN' | 'ADMIN'): BootstrapAccountConfig | null {
+    const email = this.config.get<string>(`${prefix}_EMAIL`);
+    const password = this.config.get<string>(`${prefix}_PASSWORD`);
+    if (!email || !password) return null;
+    return { email, password, name: this.config.get<string>(`${prefix}_NAME`) || undefined };
   }
 
   /** `null` when SMTP is not fully configured. */

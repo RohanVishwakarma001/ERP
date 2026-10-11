@@ -13,6 +13,7 @@ import {
   GraduationCap,
   HelpCircle,
   LayoutDashboard,
+  UserCog,
   Users2,
   Wallet,
 } from "lucide-react";
@@ -50,6 +51,7 @@ const ITEMS = {
   transport: { label: "Fleet & Transport", href: "/admin/transport", icon: icon(Bus) },
   notices: { label: "Campus Notices", href: "/admin/notices", icon: icon(BellRing) },
   complaints: { label: "Grievances", href: "/admin/complaints", icon: icon(HelpCircle) },
+  users: { label: "Users", href: "/admin/users", icon: icon(UserCog) },
   copilot: { label: "AI Campus Copilot", href: "/admin/ai-copilot", icon: icon(Bot), badge: "AI" },
 } satisfies Record<string, NavItem>;
 
@@ -64,7 +66,7 @@ const ADMIN_NAV: NavSection[] = [
     title: "Campus Operations",
     items: [ITEMS.fees, ITEMS.library, ITEMS.hostel, ITEMS.transport, ITEMS.notices, ITEMS.complaints],
   },
-  { title: "System & AI", items: [ITEMS.copilot] },
+  { title: "System & AI", items: [ITEMS.users, ITEMS.copilot] },
 ];
 
 /** Extra links for non-admin roles, beyond their own dashboard. */

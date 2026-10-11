@@ -1,4 +1,5 @@
 import * as Joi from 'joi';
+import { STRONG_PASSWORD, STRONG_PASSWORD_MESSAGE } from '../common/validators/password';
 
 /** Values copied from .env.example that must never reach a deployed server. */
 const PLACEHOLDER_SECRET = /replace-with|changeme|mock|^(.)\1+$/i;
@@ -14,6 +15,27 @@ const jwtSecret = Joi.string()
       // Never echo the value: these errors land in deploy logs.
       .messages({ 'string.pattern.invert.name': '{{#label}} looks like a placeholder; generate a random secret' }),
   });
+
+/**
+ * A bootstrap account (super admin / admin) defined in `.env`. Email and password
+ * come as a pair; in production the super admin is mandatory, because with an
+ * empty database it is the only way anyone can sign in.
+ */
+function bootstrapAccount(prefix: 'SUPER_ADMIN' | 'ADMIN', requiredInProduction: boolean) {
+  const email = Joi.string().trim().lowercase().email({ tlds: false }).max(254).allow('');
+  const password = Joi.string()
+    .pattern(STRONG_PASSWORD)
+    // Never echo the value: these errors land in deploy logs.
+    .messages({ 'string.pattern.base': `{{#label}}: ${STRONG_PASSWORD_MESSAGE}` })
+    .when(`${prefix}_EMAIL`, { is: Joi.string().min(1).required(), then: Joi.required(), otherwise: Joi.allow('') });
+  return {
+    [`${prefix}_EMAIL`]: requiredInProduction
+      ? email.when('NODE_ENV', { is: 'production', then: Joi.required().invalid('') })
+      : email,
+    [`${prefix}_PASSWORD`]: password,
+    [`${prefix}_NAME`]: Joi.string().trim().max(120).allow('').optional(),
+  };
+}
 
 /**
  * Single source of truth for every environment variable the backend reads.
@@ -51,6 +73,10 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_SECRET: jwtSecret.invalid(Joi.ref('JWT_ACCESS_SECRET')).messages({
     'any.invalid': 'JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET',
   }),
+
+  // Bootstrap accounts — created/updated from these values on every boot.
+  ...bootstrapAccount('SUPER_ADMIN', true),
+  ...bootstrapAccount('ADMIN', false),
 
   // Email (optional — OTPs are logged instead of sent when absent)
   SMTP_HOST: Joi.string().allow('').optional(),

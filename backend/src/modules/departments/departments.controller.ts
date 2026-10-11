@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { DepartmentsService } from './departments.service';
 import { Roles } from '../../common/decorators';
 import { RoleGroups } from '../../common/constants/role-groups';
-import { CreateDepartmentDto } from './dto/departments.dto';
+import { CreateDepartmentDto, CreateProgramDto, CreateSectionDto } from './dto/departments.dto';
 
 @ApiTags('Departments & Academic Programs')
 @ApiBearerAuth()
@@ -21,6 +21,32 @@ export class DepartmentsController {
   @ApiOperation({ summary: 'List subjects across all departments' })
   getCurriculum() {
     return this.departmentsService.getCurriculum();
+  }
+
+  @Get('programs')
+  @ApiOperation({ summary: 'List academic programs with their department and enrolment' })
+  listPrograms() {
+    return this.departmentsService.listPrograms();
+  }
+
+  @Post('programs')
+  @Roles(...RoleGroups.ADMINS)
+  @ApiOperation({ summary: 'Admin: create an academic program under a department' })
+  createProgram(@Body() dto: CreateProgramDto) {
+    return this.departmentsService.createProgram(dto);
+  }
+
+  @Get('sections')
+  @ApiOperation({ summary: 'List class sections with enrolment' })
+  listSections() {
+    return this.departmentsService.listSections();
+  }
+
+  @Post('sections')
+  @Roles(...RoleGroups.ADMINS)
+  @ApiOperation({ summary: 'Admin: create a class section for an academic year' })
+  createSection(@Body() dto: CreateSectionDto) {
+    return this.departmentsService.createSection(dto);
   }
 
   @Get(':id')
