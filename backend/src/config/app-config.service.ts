@@ -49,6 +49,23 @@ export class AppConfig {
     return Number(this.config.get('PORT', 8000));
   }
 
+  /**
+   * Base URL used for logging and external links.
+   * In production, prefers Render's injected RENDER_EXTERNAL_URL or PUBLIC_URL.
+   * In development/test, defaults to local host and configured port.
+   */
+  get baseUrl(): string {
+    if (this.isProduction) {
+      const externalUrl =
+        this.config.get<string>('RENDER_EXTERNAL_URL') ||
+        this.config.get<string>('PUBLIC_URL');
+      if (externalUrl && externalUrl.trim()) {
+        return externalUrl.trim().replace(/\/+$/, '');
+      }
+    }
+    return `http://localhost:${this.port}`;
+  }
+
   get swaggerEnabled(): boolean {
     return !this.isProduction || this.config.get<boolean>('ENABLE_SWAGGER', false) === true;
   }

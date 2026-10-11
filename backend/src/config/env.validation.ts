@@ -27,6 +27,8 @@ export const envValidationSchema = Joi.object({
   // Runtime
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(8000),
+  RENDER_EXTERNAL_URL: Joi.string().uri().allow('').optional(),
+  PUBLIC_URL: Joi.string().uri().allow('').optional(),
 
   // Clients & CORS
   WEB_URL: Joi.string().uri().required(),

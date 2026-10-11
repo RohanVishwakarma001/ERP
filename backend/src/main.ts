@@ -69,8 +69,8 @@ async function bootstrap() {
   if (config.swaggerEnabled) setupSwagger(app);
 
   await app.listen(config.port, '0.0.0.0');
-  logger.log(`API listening on http://localhost:${config.port}/${API_PREFIX} (${config.nodeEnv})`);
-  if (config.swaggerEnabled) logger.log(`Swagger UI: http://localhost:${config.port}/api/docs`);
+  logger.log(`API listening on ${config.baseUrl}/${API_PREFIX} (${config.nodeEnv})`);
+  if (config.swaggerEnabled) logger.log(`Swagger UI: ${config.baseUrl}/api/docs`);
 }
 
 bootstrap();
