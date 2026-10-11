@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
-import { Bell, ChevronDown, LogOut, Menu, Search } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Menu, Search, UserRound } from "lucide-react";
 import { useAuth } from "@/features/auth";
 import { useMarkAllNotificationsRead, useNotificationFeed } from "@/features/notifications";
 import { ROLES_CONFIG } from "@/lib/auth/roles";
@@ -139,6 +140,15 @@ function ProfileMenu() {
             </div>
           </div>
           <div className="p-1.5">
+            <Link
+              href="/profile"
+              role="menuitem"
+              onClick={close}
+              className="w-full flex items-center gap-2.5 px-3 h-10 text-sm text-slate-800 hover:bg-slate-100 rounded-xl font-medium"
+            >
+              <UserRound aria-hidden className="w-4 h-4" />
+              My profile
+            </Link>
             <button
               type="button"
               role="menuitem"

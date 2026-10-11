@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/lib/api/http-client";
 import { queryKeys } from "@/lib/api/query-keys";
 
@@ -19,7 +19,9 @@ export interface ExamCycle {
 /** GET /exams/schedule */
 export interface ExamPaper {
   id: string;
+  examId: string;
   examTitle: string;
+  subjectId: string;
   code: string;
   subject: string;
   date: string;
@@ -76,7 +78,47 @@ export const examsApi = {
   schedule: async (): Promise<ExamPaper[]> => (await httpClient.get("/exams/schedule")).data,
   seating: async (): Promise<SeatingHall[]> => (await httpClient.get("/exams/seating")).data,
   myGradeCard: async (): Promise<GradeCard> => (await httpClient.get("/exams/grade-card")).data,
+  create: async (input: CreateExamInput): Promise<{ id: string }> => (await httpClient.post("/exams", input)).data,
+  setStatus: async ({ id, status }: { id: string; status: ExamStatus }) => (await httpClient.patch(`/exams/${id}/status`, { status })).data,
+  remove: async (id: string) => (await httpClient.delete(`/exams/${id}`)).data,
+  addPaper: async ({ examId, ...input }: AddPaperInput & { examId: string }): Promise<{ id: string }> =>
+    (await httpClient.post(`/exams/${examId}/papers`, input)).data,
+  removePaper: async (scheduleId: string) => (await httpClient.delete(`/exams/papers/${scheduleId}`)).data,
 };
+
+export const EXAM_STATUSES = ["SCHEDULED", "ONGOING", "COMPLETED"] as const;
+export type ExamStatus = (typeof EXAM_STATUSES)[number];
+
+export interface CreateExamInput {
+  title: string;
+  cycle: string;
+  academicYear: string;
+}
+
+export interface AddPaperInput {
+  subjectId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  maxMarks: number;
+}
+
+function useExamsMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.exams.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admitCards.all });
+    },
+  });
+}
+
+export const useCreateExam = () => useExamsMutation(examsApi.create);
+export const useSetExamStatus = () => useExamsMutation(examsApi.setStatus);
+export const useDeleteExam = () => useExamsMutation(examsApi.remove);
+export const useAddExamPaper = () => useExamsMutation(examsApi.addPaper);
+export const useRemoveExamPaper = () => useExamsMutation(examsApi.removePaper);
 
 export function useExamCycles() {
   return useQuery({ queryKey: queryKeys.exams.cycles, queryFn: examsApi.cycles });

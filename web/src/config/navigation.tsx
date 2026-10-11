@@ -10,6 +10,9 @@ import {
   Bus,
   CalendarCheck2,
   CalendarDays,
+  ClipboardList,
+  FileBadge,
+  Receipt,
   GraduationCap,
   HelpCircle,
   LayoutDashboard,
@@ -52,6 +55,9 @@ const ITEMS = {
   notices: { label: "Campus Notices", href: "/admin/notices", icon: icon(BellRing) },
   complaints: { label: "Grievances", href: "/admin/complaints", icon: icon(HelpCircle) },
   users: { label: "Users", href: "/admin/users", icon: icon(UserCog) },
+  admitCards: { label: "Admit Cards", href: "/admin/admit-cards", icon: icon(FileBadge) },
+  feeStructures: { label: "Fee Structures", href: "/finance/fee-structures", icon: icon(Receipt) },
+  facultyAssignments: { label: "Assignments", href: "/faculty/assignments", icon: icon(ClipboardList) },
   copilot: { label: "AI Campus Copilot", href: "/admin/ai-copilot", icon: icon(Bot), badge: "AI" },
 } satisfies Record<string, NavItem>;
 
@@ -61,18 +67,19 @@ const ADMIN_NAV: NavSection[] = [
     title: "Academic Affairs",
     items: [ITEMS.departments, ITEMS.courses, ITEMS.faculty, ITEMS.students, ITEMS.placement, ITEMS.recruiter],
   },
-  { title: "Scheduling & Exams", items: [ITEMS.timetable, ITEMS.exams] },
+  { title: "Scheduling & Exams", items: [ITEMS.timetable, ITEMS.exams, ITEMS.admitCards] },
   {
     title: "Campus Operations",
-    items: [ITEMS.fees, ITEMS.library, ITEMS.hostel, ITEMS.transport, ITEMS.notices, ITEMS.complaints],
+    items: [ITEMS.fees, ITEMS.feeStructures, ITEMS.library, ITEMS.hostel, ITEMS.transport, ITEMS.notices, ITEMS.complaints],
   },
   { title: "System & AI", items: [ITEMS.users, ITEMS.copilot] },
 ];
 
 /** Extra links for non-admin roles, beyond their own dashboard. */
 const ROLE_EXTRAS: Partial<Record<UserRole, NavItem[]>> = {
-  HOD: [ITEMS.departments, ITEMS.courses, ITEMS.faculty],
-  ACCOUNTANT: [ITEMS.fees],
+  HOD: [ITEMS.departments, ITEMS.courses, ITEMS.faculty, ITEMS.facultyAssignments],
+  FACULTY: [ITEMS.facultyAssignments],
+  ACCOUNTANT: [ITEMS.fees, ITEMS.feeStructures],
   EXAM_OFFICER: [ITEMS.exams],
   LIBRARIAN: [ITEMS.library],
   PLACEMENT_OFFICER: [ITEMS.placement],
@@ -80,7 +87,9 @@ const ROLE_EXTRAS: Partial<Record<UserRole, NavItem[]>> = {
   TRANSPORT_MANAGER: [ITEMS.transport],
   STUDENT: [
     { label: "Attendance", href: "/student/attendance", icon: icon(CalendarCheck2) },
-    { label: "Fee Ledger", href: "/student/fees", icon: icon(Wallet) },
+    { label: "Assignments", href: "/student/assignments", icon: icon(ClipboardList) },
+    { label: "Exams & Admit Card", href: "/student/exams", icon: icon(FileBadge) },
+    { label: "Fees & Payments", href: "/student/fees", icon: icon(Wallet) },
   ],
 };
 

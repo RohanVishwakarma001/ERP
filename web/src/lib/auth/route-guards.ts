@@ -8,9 +8,13 @@ export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+/** Pages every signed-in user may open, whatever their role. */
+export const SHARED_PATHS = ["/profile"] as const;
+
 export function isPathAllowedForRole(role: UserRole | undefined, pathname: string): boolean {
   if (!role) return false;
   if (isPublicPath(pathname)) return true;
+  if (SHARED_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return true;
   // Admins may open every area, including the role-specific dashboards.
   if (isAdminRole(role)) return true;
   return ROLES_CONFIG[role]?.allowedPrefixes.some((prefix) => pathname.startsWith(prefix)) ?? false;

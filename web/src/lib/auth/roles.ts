@@ -34,7 +34,7 @@ export const ROLES_CONFIG: Record<UserRole, RoleConfig> = {
     label: "Head of Department",
     description: "Departmental workload, faculty reviews, academic metrics & compliance",
     defaultPath: "/hod/dashboard",
-    allowedPrefixes: ["/hod", "/admin/departments", "/admin/courses", "/admin/faculty"],
+    allowedPrefixes: ["/hod", "/admin/departments", "/admin/courses", "/admin/faculty", "/faculty/assignments"],
     badgeColor: "bg-tertiary-container text-on-tertiary",
   },
   ACCOUNTANT: {

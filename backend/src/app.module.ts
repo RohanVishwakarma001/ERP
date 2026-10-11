@@ -37,6 +37,7 @@ import { TransportModule } from './modules/transport/transport.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { AdmitCardsModule } from './modules/admit-cards/admit-cards.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { AuditModule } from './modules/audit/audit.module';
     AnalyticsModule,
     AiModule,
     AuditModule,
+    AdmitCardsModule,
   ],
   providers: [
     // Order matters: rate-limit first, then authenticate, then authorize.

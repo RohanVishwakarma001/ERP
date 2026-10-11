@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ChevronRight, LogOut, Sparkles } from 'lucide-react-native';
+import { ChevronRight, LogOut, Sparkles, UserRound } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/auth-store';
 import { useWorkload } from '@/features/faculty';
 import { QueryState } from '@/components/common/query-state';
+import { ProfileSheet } from '@/components/modals/profile-sheet';
 import { Button, Card, IconTile, ListRow, SectionTitle, StatusPill } from '@/components/ui/primitives';
 import { Colors, Radius, Spacing, Type } from '@/constants/theme';
 
@@ -16,6 +17,7 @@ interface FacultyMoreViewProps {
 export function FacultyMoreView({ onOpenCopilot }: FacultyMoreViewProps) {
   const { logout } = useAuthStore();
   const workload = useWorkload();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleSignOut = () =>
     Alert.alert('Sign out?', 'You will need to sign in again to use the app.', [
@@ -58,6 +60,18 @@ export function FacultyMoreView({ onOpenCopilot }: FacultyMoreViewProps) {
           <ListRow
             leading={
               <IconTile>
+                <UserRound size={20} color={C.primaryContainer} />
+              </IconTile>
+            }
+            title="My profile"
+            subtitle="Employment details and assigned courses"
+            trailing={<ChevronRight size={18} color={C.textMuted} />}
+            onPress={() => setProfileOpen(true)}
+          />
+          <View style={styles.divider} />
+          <ListRow
+            leading={
+              <IconTile>
                 <Sparkles size={20} color={C.primaryContainer} />
               </IconTile>
             }
@@ -67,10 +81,11 @@ export function FacultyMoreView({ onOpenCopilot }: FacultyMoreViewProps) {
             onPress={onOpenCopilot}
           />
         </Card>
-        <Text style={styles.footnote}>Leave applications and petition reviews are handled by your department office on the web portal.</Text>
+        <Text style={styles.footnote}>Set assignments, grade submissions and review petitions on the web portal.</Text>
       </View>
 
       <Button label="Sign out" variant="danger" icon={<LogOut size={18} color={C.danger} />} onPress={handleSignOut} />
+      <ProfileSheet visible={profileOpen} onClose={() => setProfileOpen(false)} />
     </ScrollView>
   );
 }
@@ -84,5 +99,6 @@ const styles = StyleSheet.create({
   track: { height: 8, borderRadius: Radius.full, backgroundColor: C.backgroundSelected, overflow: 'hidden', marginTop: Spacing.md },
   fill: { height: '100%', borderRadius: Radius.full },
   loadNote: { ...Type.subhead, color: C.textSecondary, marginTop: Spacing.sm },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.border },
   footnote: { ...Type.caption, color: C.textSecondary, marginTop: Spacing.sm, paddingHorizontal: 4 },
 });

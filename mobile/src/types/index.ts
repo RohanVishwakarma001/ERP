@@ -176,6 +176,10 @@ export interface AssignmentItem {
   maxMarks: number;
   mySubmissionStatus: 'PENDING' | 'SUBMITTED' | 'EVALUATED' | 'RESUBMITTED' | 'LATE' | null;
   myMarks: number | null;
+  myFeedback: string | null;
+  /** Brief / question paper the faculty member attached, if any. */
+  attachmentUrl: string | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED';
 }
 
 /** GET /attendance/petitions/me */

@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Shadows, Spacing } from '@/constants/theme';
-import { CheckCircle2, Clock, UploadCloud } from 'lucide-react-native';
+import { CheckCircle2, Clock, Download, UploadCloud } from 'lucide-react-native';
+import { openBrowserAsync } from 'expo-web-browser';
 import { useAuthStore } from '@/stores/auth-store';
 import { QueryState } from '@/components/common/query-state';
 import { useAssignments, useGradeCard, useSubmitAssignment } from '@/features/academics';
@@ -156,12 +157,30 @@ export function StudentAcademicsView() {
                       </View>
                     </View>
                     <Text style={styles.asnTitle}>{asn.title}</Text>
+                    {asn.description ? <Text style={styles.asnDescription}>{asn.description}</Text> : null}
+                    {asn.myMarks !== null && (
+                      <Text style={styles.asnMarks}>
+                        Marks: {asn.myMarks} / {asn.maxMarks}
+                        {asn.myFeedback ? ` · ${asn.myFeedback}` : ''}
+                      </Text>
+                    )}
+                    {asn.attachmentUrl && (
+                      <TouchableOpacity
+                        style={styles.briefBtn}
+                        onPress={() => openBrowserAsync(asn.attachmentUrl!)}
+                        accessibilityRole="link"
+                        accessibilityLabel={`Download brief for ${asn.title}`}
+                      >
+                        <Download size={14} color="#0B3B60" />
+                        <Text style={styles.briefBtnText}>Download brief</Text>
+                      </TouchableOpacity>
+                    )}
                     <View style={styles.cardFooter}>
                       <View style={styles.deadlineRow}>
                         <Clock size={12} color="#64748B" />
                         <Text style={styles.deadlineText}>Due {formatDate(asn.deadline)}</Text>
                       </View>
-                      {!submitted && !isOverdue && (
+                      {!submitted && !isOverdue && asn.status !== 'CLOSED' && (
                         <TouchableOpacity style={styles.uploadBtn} onPress={() => handleAssignmentSubmit(asn.id)} disabled={isUploading}>
                           {isUploading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <UploadCloud size={13} color="#FFFFFF" />}
                           <Text style={styles.uploadBtnText}>{isUploading ? 'Uploading…' : 'Submit Work'}</Text>
@@ -435,6 +454,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
   },
+  asnDescription: { fontSize: 13, lineHeight: 18, color: '#3A3A3C', marginTop: 6 },
+  asnMarks: { fontSize: 13, lineHeight: 18, color: '#1B6E3A', fontWeight: '600', marginTop: 6 },
+  briefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 12, marginTop: 8, borderRadius: 10, backgroundColor: '#E8EEF5' },
+  briefBtnText: { fontSize: 13, fontWeight: '600', color: '#0B3B60' },
   submittedPill: {
     backgroundColor: '#ECFDF5',
   },

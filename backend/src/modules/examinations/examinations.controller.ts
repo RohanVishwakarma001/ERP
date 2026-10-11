@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, ParseUUIDPipe, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { ExaminationsService } from './examinations.service';
 import { CurrentStudentId, Roles } from '../../common/decorators';
 import { RoleGroups } from '../../common/constants/role-groups';
-import { GenerateSeatingDto, RecordMarksDto } from './dto/examinations.dto';
+import { AddExamPaperDto, CreateExamDto, GenerateSeatingDto, RecordMarksDto, UpdateExamStatusDto } from './dto/examinations.dto';
 
 @ApiTags('Examinations & Seating Matrix')
 @ApiBearerAuth()
@@ -22,6 +22,41 @@ export class ExaminationsController {
   @ApiOperation({ summary: 'Examination cycles with date range and hall counts' })
   getCycles() {
     return this.examsService.getCycles();
+  }
+
+  @Post()
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: create an exam cycle' })
+  createExam(@Body() dto: CreateExamDto) {
+    return this.examsService.createExam(dto);
+  }
+
+  @Patch(':id/status')
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: mark an exam scheduled, ongoing or completed' })
+  updateExamStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateExamStatusDto) {
+    return this.examsService.updateExamStatus(id, dto);
+  }
+
+  @Delete(':id')
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: delete an exam with no admit cards or hall allocations' })
+  deleteExam(@Param('id', ParseUUIDPipe) id: string) {
+    return this.examsService.deleteExam(id);
+  }
+
+  @Post(':id/papers')
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: schedule a paper (course, date, time) in an exam' })
+  addPaper(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddExamPaperDto) {
+    return this.examsService.addPaper(id, dto);
+  }
+
+  @Delete('papers/:scheduleId')
+  @Roles(...RoleGroups.EXAM_CONTROL)
+  @ApiOperation({ summary: 'COE: remove a paper that has no seating yet' })
+  removePaper(@Param('scheduleId', ParseUUIDPipe) scheduleId: string) {
+    return this.examsService.removePaper(scheduleId);
   }
 
   @Get('seating')

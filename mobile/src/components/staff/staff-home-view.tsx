@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BookOpen, Laptop, LogOut, Search } from 'lucide-react-native';
+import { BookOpen, Laptop, LogOut, Search, UserRound } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotices } from '@/features/campus';
 import { useCatalogue, useExecutiveSummary, useLibraryLoans, useReturnBook, type LibraryLoan } from '@/features/staff';
 import { QueryState } from '@/components/common/query-state';
+import { ProfileSheet } from '@/components/modals/profile-sheet';
 import { ROLE_LABELS } from '@/components/common/header';
 import { Button, Card, EmptyNote, IconTile, ListRow, SectionTitle, StatusPill } from '@/components/ui/primitives';
 import { getErrorMessage } from '@/lib/api/api-error';
@@ -26,6 +27,7 @@ export function StaffHomeView() {
   const role = user?.role ?? '';
   const isLibrary = LIBRARY_ROLES.has(role);
   const isExecutive = EXECUTIVE_ROLES.has(role);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const summary = useExecutiveSummary(isExecutive);
   const loans = useLibraryLoans(isLibrary);
@@ -106,6 +108,9 @@ export function StaffHomeView() {
           </Text>
         </View>
       </Card>
+
+      <Button label="My profile" variant="secondary" icon={<UserRound size={18} color={C.primaryContainer} />} onPress={() => setProfileOpen(true)} />
+      <ProfileSheet visible={profileOpen} onClose={() => setProfileOpen(false)} />
 
       <Button
         label="Sign out"

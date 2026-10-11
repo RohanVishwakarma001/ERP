@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Req, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, ParseUUIDPipe, Req, BadRequestException, HttpCode, HttpStatus } from '@nestjs/common';
 import { RawBodyRequest } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -8,7 +8,7 @@ import { FeesService } from './fees.service';
 import { CurrentStudentId, CurrentUser, Public, Roles } from '../../common/decorators';
 import { RoleGroups } from '../../common/constants/role-groups';
 import { AuthUser } from '../../common/interfaces/auth-user.interface';
-import { CreateOrderDto, VerifyPaymentDto } from './dto/fees.dto';
+import { AssignFeeStructureDto, CreateFeeStructureDto, CreateOrderDto, RecordPaymentDto, VerifyPaymentDto } from './dto/fees.dto';
 
 @ApiTags('Fee Ledger & Payment Gateway')
 @ApiBearerAuth()
@@ -21,6 +21,41 @@ export class FeesController {
   @ApiOperation({ summary: 'Finance: institution-wide fee ledger' })
   getFeeLedger() {
     return this.feesService.getFeeLedger();
+  }
+
+  @Get('structures')
+  @Roles(...RoleGroups.FINANCE)
+  @ApiOperation({ summary: 'Finance: fee structures with billed / collected totals' })
+  listStructures() {
+    return this.feesService.listStructures();
+  }
+
+  @Post('structures')
+  @Roles(...RoleGroups.FINANCE)
+  @ApiOperation({ summary: 'Finance: define the fee for a program semester and academic year' })
+  createStructure(@Body() dto: CreateFeeStructureDto) {
+    return this.feesService.createStructure(dto);
+  }
+
+  @Delete('structures/:id')
+  @Roles(...RoleGroups.FINANCE)
+  @ApiOperation({ summary: 'Finance: delete a fee structure no student has been billed with' })
+  deleteStructure(@Param('id', ParseUUIDPipe) id: string) {
+    return this.feesService.deleteStructure(id);
+  }
+
+  @Post('structures/:id/assign')
+  @Roles(...RoleGroups.FINANCE)
+  @ApiOperation({ summary: 'Finance: bill every current student of the program semester (skips those already billed)' })
+  assignStructure(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignFeeStructureDto) {
+    return this.feesService.assignStructure(id, dto);
+  }
+
+  @Post('accounts/:id/payments')
+  @Roles(...RoleGroups.FINANCE)
+  @ApiOperation({ summary: 'Finance: record a cash / cheque / DD / bank-transfer payment and issue a receipt' })
+  recordPayment(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RecordPaymentDto) {
+    return this.feesService.recordOfflinePayment(id, dto);
   }
 
   @Get('me')

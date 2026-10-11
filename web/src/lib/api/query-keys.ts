@@ -47,6 +47,19 @@ export const queryKeys = {
     seating: ["exams", "seating"] as const,
     myGradeCard: ["exams", "grade-card", "me"] as const,
   },
+  admitCards: {
+    all: ["admit-cards"] as const,
+    forExam: (examId: string) => ["admit-cards", "exam", examId] as const,
+    mine: ["admit-cards", "me"] as const,
+  },
+  assignments: {
+    all: ["assignments"] as const,
+    list: ["assignments", "list"] as const,
+    submissions: (id: string) => ["assignments", "submissions", id] as const,
+  },
+  profile: {
+    me: ["profile", "me"] as const,
+  },
   placement: {
     all: ["placement"] as const,
     drives: ["placement", "drives"] as const,
@@ -56,6 +69,7 @@ export const queryKeys = {
     all: ["fees"] as const,
     ledger: ["fees", "ledger"] as const,
     mine: ["fees", "me"] as const,
+    structures: ["fees", "structures"] as const,
   },
   notices: {
     all: ["notices"] as const,

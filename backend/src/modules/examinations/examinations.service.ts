@@ -1,8 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AssessmentType, ResultStatus } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { PASSING_GRADE_POINT, computeSgpa, gradeFor } from '../../common/utils/grading';
-import { GenerateSeatingDto, RecordMarksDto } from './dto/examinations.dto';
+import { parseClockTime } from '../../common/utils/campus-clock';
+import { AddExamPaperDto, CreateExamDto, GenerateSeatingDto, RecordMarksDto, UpdateExamStatusDto } from './dto/examinations.dto';
 import { interleaveByGroup, seatPositions } from './seating';
 
 const DEFAULT_DESKS_PER_ROW = 6;
@@ -21,7 +22,9 @@ export class ExaminationsService {
     });
     return schedules.map((s) => ({
       id: s.id,
+      examId: s.examId,
       examTitle: s.exam.title,
+      subjectId: s.subjectId,
       code: s.subject.code,
       subject: s.subject.name,
       date: formatDate(s.date),
@@ -55,6 +58,72 @@ export class ExaminationsService {
         totalSeatings: rooms.reduce((sum, r) => sum + r._count.seatings, 0),
       };
     });
+  }
+
+  // ── Exam cycles and papers (exam control) ───────────────────────────────────
+
+  async createExam(dto: CreateExamDto) {
+    const [start, end] = dto.academicYear.split('-').map(Number);
+    if (end !== start + 1) throw new BadRequestException('academicYear must span two consecutive years, e.g. 2026-2027.');
+    const exam = await this.prisma.exam.create({ data: { ...dto, status: 'SCHEDULED' } });
+    return { id: exam.id };
+  }
+
+  async updateExamStatus(id: string, dto: UpdateExamStatusDto) {
+    await this.requireExam(id);
+    await this.prisma.exam.update({ where: { id }, data: { status: dto.status } });
+    return { id, status: dto.status };
+  }
+
+  async deleteExam(id: string) {
+    const exam = await this.prisma.exam.findUnique({
+      where: { id },
+      include: { _count: { select: { admitCards: true } }, schedules: { select: { _count: { select: { examRooms: true } } } } },
+    });
+    if (!exam) throw new NotFoundException('Exam not found.');
+    if (exam._count.admitCards > 0) throw new ConflictException('Admit cards have been issued for this exam, so it can’t be deleted.');
+    if (exam.schedules.some((s) => s._count.examRooms > 0)) {
+      throw new ConflictException('Halls have been allocated for this exam, so it can’t be deleted.');
+    }
+    await this.prisma.exam.delete({ where: { id } });
+    return { id, deleted: true };
+  }
+
+  async addPaper(examId: string, dto: AddExamPaperDto) {
+    await this.requireExam(examId);
+    const subject = await this.prisma.subject.findUnique({ where: { id: dto.subjectId } });
+    if (!subject) throw new BadRequestException('The selected course no longer exists.');
+    const start = parseClockTime(dto.startTime);
+    const end = parseClockTime(dto.endTime);
+    if (start === null || end === null || end <= start) throw new BadRequestException('The paper must end after it starts.');
+    const duplicate = await this.prisma.examSchedule.findFirst({ where: { examId, subjectId: dto.subjectId } });
+    if (duplicate) throw new ConflictException(`${subject.code} is already scheduled in this exam.`);
+
+    const paper = await this.prisma.examSchedule.create({
+      data: {
+        examId,
+        subjectId: dto.subjectId,
+        date: new Date(`${dto.date.slice(0, 10)}T00:00:00Z`),
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        maxMarks: dto.maxMarks,
+      },
+    });
+    return { id: paper.id };
+  }
+
+  async removePaper(scheduleId: string) {
+    const paper = await this.prisma.examSchedule.findUnique({ where: { id: scheduleId }, include: { _count: { select: { examRooms: true } } } });
+    if (!paper) throw new NotFoundException('Paper not found.');
+    if (paper._count.examRooms > 0) throw new ConflictException('Candidates are already seated for this paper. Remove the hall allocation first.');
+    await this.prisma.examSchedule.delete({ where: { id: scheduleId } });
+    return { id: scheduleId, deleted: true };
+  }
+
+  private async requireExam(id: string) {
+    const exam = await this.prisma.exam.findUnique({ where: { id } });
+    if (!exam) throw new NotFoundException('Exam not found.');
+    return exam;
   }
 
   /** One row per (paper, room) allocation with its candidate count and invigilators. */

@@ -18,6 +18,11 @@ export const queryKeys = {
     workload: ['faculty', 'workload'] as const,
     roster: (section?: string) => ['faculty', 'roster', section ?? 'all'] as const,
   },
+  account: {
+    profile: ['account', 'profile'] as const,
+    fees: ['account', 'fees'] as const,
+    exams: ['account', 'exams'] as const,
+  },
   notices: ['notices'] as const,
   placement: { drives: ['placement', 'drives'] as const },
   notifications: ['notifications'] as const,

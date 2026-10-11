@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { openBrowserAsync } from 'expo-web-browser';
-import { ChevronRight, CreditCard, HelpCircle, LogOut, Sparkles } from 'lucide-react-native';
+import { ChevronRight, HelpCircle, LogOut, Sparkles, UserRound } from 'lucide-react-native';
 import { useAuthStore } from '@/stores/auth-store';
 import { useApplyToDrive, useMyComplaints, usePlacementDrives } from '@/features/campus';
 import { QueryState } from '@/components/common/query-state';
 import { GrievanceSheet } from '@/components/modals/grievance-sheet';
+import { ProfileSheet } from '@/components/modals/profile-sheet';
+import { AdmitCardsSection, FeeStatusSection } from '@/components/student/student-fees-exams';
 import { Button, Card, IconTile, ListRow, SectionTitle, StatusPill } from '@/components/ui/primitives';
-import { env } from '@/config/env';
 import { formatDate } from '@/lib/format';
 import { Colors, Spacing, Type } from '@/constants/theme';
 
@@ -25,6 +25,7 @@ export function StudentMoreView({ onOpenCopilot }: StudentMoreViewProps) {
   const apply = useApplyToDrive();
   const tickets = useMyComplaints(true);
   const [grievanceOpen, setGrievanceOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   const handleApply = (driveId: string, company: string) =>
     Alert.alert('Apply to this drive?', `Your profile will be shared with ${company}.`, [
@@ -40,6 +41,23 @@ export function StudentMoreView({ onOpenCopilot }: StudentMoreViewProps) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Card padded={false} style={styles.menu}>
+        <ListRow
+          leading={
+            <IconTile>
+              <UserRound size={20} color={C.primaryContainer} />
+            </IconTile>
+          }
+          title="My profile"
+          subtitle="Academic, fee, hostel and transport details"
+          trailing={<ChevronRight size={18} color={C.textMuted} />}
+          onPress={() => setProfileOpen(true)}
+        />
+      </Card>
+
+      <FeeStatusSection />
+      <AdmitCardsSection />
+
       <View>
         <SectionTitle title="Placement drives" />
         <QueryState query={drives} emptyText="No placement drives announced yet.">
@@ -96,22 +114,6 @@ export function StudentMoreView({ onOpenCopilot }: StudentMoreViewProps) {
             trailing={<ChevronRight size={18} color={C.textMuted} />}
             onPress={() => setGrievanceOpen(true)}
           />
-          {env.webUrl && (
-            <View style={styles.divider}>
-              <ListRow
-                leading={
-                  <IconTile tone="success">
-                    <CreditCard size={20} color={C.success} />
-                  </IconTile>
-                }
-                title="Fees & payments"
-                subtitle="View dues and pay securely on the web portal"
-                trailing={<ChevronRight size={18} color={C.textMuted} />}
-                accessibilityHint="Opens the web portal in an in-app browser"
-                onPress={() => openBrowserAsync(`${env.webUrl}/student/fees`)}
-              />
-            </View>
-          )}
           <View style={styles.divider}>
             <ListRow
               leading={
@@ -148,6 +150,7 @@ export function StudentMoreView({ onOpenCopilot }: StudentMoreViewProps) {
       <Button label="Sign out" variant="danger" icon={<LogOut size={18} color={C.danger} />} onPress={handleSignOut} />
 
       <GrievanceSheet visible={grievanceOpen} onClose={() => setGrievanceOpen(false)} />
+      <ProfileSheet visible={profileOpen} onClose={() => setProfileOpen(false)} />
     </ScrollView>
   );
 }
