@@ -18,6 +18,8 @@ export interface User {
   email: string;
   role: UserRole;
   department?: string;
+  /** Set for students, faculty and HODs. */
+  departmentId?: string;
   designation?: string;
   rollNumber?: string;
   semester?: number;

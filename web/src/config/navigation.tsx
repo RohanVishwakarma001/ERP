@@ -71,7 +71,7 @@ const ADMIN_NAV: NavSection[] = [
 
 /** Extra links for non-admin roles, beyond their own dashboard. */
 const ROLE_EXTRAS: Partial<Record<UserRole, NavItem[]>> = {
-  HOD: [ITEMS.departments, ITEMS.faculty],
+  HOD: [ITEMS.departments, ITEMS.courses, ITEMS.faculty],
   ACCOUNTANT: [ITEMS.fees],
   EXAM_OFFICER: [ITEMS.exams],
   LIBRARIAN: [ITEMS.library],

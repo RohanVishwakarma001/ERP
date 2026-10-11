@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Award, Building2, GraduationCap, PlusCircle, Printer, Users } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/dashboard-layout";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Modal, ModalActions } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { ProgressBar } from "@/components/ui/progress-bar";
-import { Field, TextInput } from "@/components/ui/form-field";
 import { ErrorState } from "@/components/ui/query-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { useCreateDepartment, useDepartments, type Department } from "@/features/departments";
+import { RowActions } from "@/components/academics/row-actions";
+import { DepartmentDialog } from "@/components/academics/department-dialog";
+import { useDeleteDepartment, useDepartments, type Department } from "@/features/departments";
+import { useAuth } from "@/features/auth";
+import { canManageDepartments } from "@/lib/auth/academic-permissions";
 import { attendanceTone } from "@/features/attendance";
 import { formatNumber, formatPercent } from "@/lib/format";
 import { toast } from "@/lib/toast-store";
 
-const EMPTY_FORM = { name: "", code: "", building: "" };
-
-const columns: Column<Department>[] = [
+const baseColumns: Column<Department>[] = [
   {
     header: "Department",
     accessorKey: "name",
@@ -90,10 +91,13 @@ const columns: Column<Department>[] = [
 ];
 
 export default function DepartmentsPage() {
+  const { user } = useAuth();
+  const canManage = canManageDepartments(user);
   const departments = useDepartments();
-  const createDepartment = useCreateDepartment();
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const deleteDepartment = useDeleteDepartment();
+  // undefined = closed, null = adding, Department = editing.
+  const [editing, setEditing] = useState<Department | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<Department | null>(null);
 
   const list = departments.data ?? [];
   const totals = list.reduce(
@@ -101,14 +105,21 @@ export default function DepartmentsPage() {
     { students: 0, faculty: 0, nba: 0 },
   );
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    createDepartment.mutate(form, {
-      onSuccess: (dept) => {
-        toast.success(`${dept.name} created.`);
-        setIsAddOpen(false);
-        setForm(EMPTY_FORM);
-      },
+  const columns: Column<Department>[] = canManage
+    ? [
+        ...baseColumns,
+        {
+          header: "Actions",
+          cell: (d) => <RowActions name={d.name} onEdit={() => setEditing(d)} onDelete={() => setDeleting(d)} />,
+        },
+      ]
+    : baseColumns;
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    deleteDepartment.mutate(deleting.id, {
+      onSuccess: () => toast.success(`${deleting.name} deleted.`),
+      onSettled: () => setDeleting(null),
     });
   };
 
@@ -124,9 +135,11 @@ export default function DepartmentsPage() {
               <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={() => window.print()}>
                 Print
               </Button>
-              <Button icon={<PlusCircle className="w-4 h-4" />} onClick={() => setIsAddOpen(true)}>
-                Add Department
-              </Button>
+              {canManage && (
+                <Button icon={<PlusCircle className="w-4 h-4" />} onClick={() => setEditing(null)}>
+                  Add Department
+                </Button>
+              )}
             </>
           }
         />
@@ -158,37 +171,18 @@ export default function DepartmentsPage() {
         )}
       </div>
 
-      <Modal open={isAddOpen} onClose={() => setIsAddOpen(false)} title="Add Department">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Field label="Department name">
-            <TextInput
-              required
-              placeholder="e.g. Artificial Intelligence & Data Science"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </Field>
-          <Field label="Code" hint="2–10 letters or digits, e.g. AIDS">
-            <TextInput
-              required
-              pattern="[A-Za-z0-9]{2,10}"
-              value={form.code}
-              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
-            />
-          </Field>
-          <Field label="Building">
-            <TextInput required placeholder="e.g. Block A" value={form.building} onChange={(e) => setForm({ ...form, building: e.target.value })} />
-          </Field>
-          <ModalActions>
-            <Button variant="secondary" onClick={() => setIsAddOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" loading={createDepartment.isPending}>
-              Save Department
-            </Button>
-          </ModalActions>
-        </form>
-      </Modal>
+      {editing !== undefined && <DepartmentDialog key={editing?.id ?? "new"} open onClose={() => setEditing(undefined)} department={editing} />}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete department?"
+        message={`${deleting?.name ?? ""} will be removed permanently. Departments that still have programs, courses, faculty or students can't be deleted.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deleteDepartment.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </DashboardLayout>
   );
 }

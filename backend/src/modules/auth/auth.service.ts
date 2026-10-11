@@ -126,6 +126,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
         department: user.student?.department.name ?? user.faculty?.department.name,
+        departmentId: user.student?.departmentId ?? user.faculty?.departmentId,
         rollNumber: user.student?.rollNumber,
         semester: user.student?.semester,
         cgpa: user.student?.cgpa,
