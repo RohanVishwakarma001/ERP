@@ -60,6 +60,8 @@ export const usersApi = {
   create: async (input: CreateAccountInput): Promise<Account> => (await httpClient.post("/users", input)).data,
   setStatus: async ({ id, status }: { id: string; status: Exclude<AccountStatus, "LOCKED"> }): Promise<Account> =>
     (await httpClient.patch(`/users/${id}/status`, { status })).data,
+  setPassword: async ({ id, password }: { id: string; password: string }): Promise<{ id: string; passwordChanged: true }> =>
+    (await httpClient.patch(`/users/${id}/password`, { password })).data,
 };
 
 export function useAccounts(filters: UserFilters) {
@@ -86,4 +88,8 @@ export function useSetAccountStatus() {
     mutationFn: usersApi.setStatus,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.users.all }),
   });
+}
+
+export function useSetAccountPassword() {
+  return useMutation({ mutationFn: usersApi.setPassword });
 }

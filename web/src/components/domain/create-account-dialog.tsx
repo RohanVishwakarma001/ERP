@@ -9,14 +9,13 @@ import { Field, SelectInput, TextInput } from "@/components/ui/form-field";
 import { useDepartments, usePrograms, useSections } from "@/features/departments";
 import { useCreateAccount, type CreateAccountInput } from "@/features/users";
 import { ROLES_CONFIG } from "@/lib/auth/roles";
+import { generatePassword, STRONG_PASSWORD, STRONG_PASSWORD_HINT } from "@/lib/password";
 import { toast } from "@/lib/toast-store";
 import type { UserRole } from "@/types";
 
 const TEACHING: UserRole[] = ["FACULTY", "HOD"];
 const STAFF: UserRole[] = ["ACCOUNTANT", "EXAM_OFFICER", "LIBRARIAN", "PLACEMENT_OFFICER", "HOSTEL_WARDEN", "TRANSPORT_MANAGER"];
 
-/** Mirrors the backend rule (common/validators/password.ts). */
-const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,72}$/;
 const CODE_PATTERN = "[A-Za-z0-9][A-Za-z0-9/_\\-]{1,29}";
 
 const EMPTY = {
@@ -39,19 +38,6 @@ const EMPTY = {
   designation: "",
   employeeId: "",
 };
-
-/** A random password that satisfies the strength rule, from the browser's CSPRNG. */
-function generatePassword() {
-  const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%&*?"];
-  const all = sets.join("");
-  const random = (n: number) => crypto.getRandomValues(new Uint32Array(1))[0] % n;
-  const chars = [...sets.map((s) => s[random(s.length)]), ...Array.from({ length: 10 }, () => all[random(all.length)])];
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = random(i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join("");
-}
 
 interface CreateAccountDialogProps {
   open: boolean;
@@ -87,7 +73,7 @@ export function CreateAccountDialog({ open, onClose, allowAdmin }: CreateAccount
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!STRONG_PASSWORD.test(form.password)) {
-      setPasswordError("Use 8–72 characters with upper- and lower-case letters, a number and a symbol.");
+      setPasswordError(STRONG_PASSWORD_HINT);
       return;
     }
     setPasswordError(undefined);

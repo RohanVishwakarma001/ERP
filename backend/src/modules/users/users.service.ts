@@ -5,7 +5,14 @@ import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface';
 import { BCRYPT_ROUNDS_PASSWORD } from '../auth/auth.constants';
 import { BOOTSTRAP_EMPLOYEE_IDS } from './admin-bootstrap.service';
-import { CreateUserDto, ListUsersQueryDto, STAFF_ROLES, TEACHING_ROLES, UpdateUserStatusDto } from './dto/users.dto';
+import {
+  CreateUserDto,
+  ListUsersQueryDto,
+  ResetPasswordByAdminDto,
+  STAFF_ROLES,
+  TEACHING_ROLES,
+  UpdateUserStatusDto,
+} from './dto/users.dto';
 
 const USER_INCLUDE = {
   student: { select: { rollNumber: true, department: { select: { code: true } }, program: { select: { code: true } } } },
@@ -147,6 +154,39 @@ export class UsersService {
         : [this.prisma.refreshToken.updateMany({ where: { userId: id, isRevoked: false }, data: { isRevoked: true } })]),
     ]);
     return this.toView(updated);
+  }
+
+  /**
+   * Sets a new password chosen by an administrator (e.g. a student who can't use
+   * "Forgot password"). Signs the account out everywhere and records who did it —
+   * the password itself is never logged.
+   */
+  async resetPassword(id: string, dto: ResetPasswordByAdminDto, actor: AuthUser, ipAddress?: string) {
+    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, include: USER_INCLUDE });
+    if (!user) throw new NotFoundException('Account not found.');
+    if (user.id === actor.id) throw new ForbiddenException('Use "Forgot password" to change your own password.');
+    if (user.adminProfile && MANAGED_IDS.has(user.adminProfile.employeeId)) {
+      throw new ForbiddenException("This account's password is set in the server .env file.");
+    }
+    this.assertMayManageRole(actor, user.role);
+
+    // Reset codes are stored against whatever the person typed (email, phone, roll /
+    // enrollment number or employee code), lower-cased — clear all of them.
+    const student = await this.prisma.student.findUnique({ where: { userId: id }, select: { enrollmentNumber: true } });
+    const identifiers = [user.email, user.phone, user.student?.rollNumber, student?.enrollmentNumber, user.faculty?.employeeCode]
+      .filter((v): v is string => Boolean(v))
+      .map((v) => v.toLowerCase());
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(dto.password, BCRYPT_ROUNDS_PASSWORD) } }),
+      this.prisma.refreshToken.updateMany({ where: { userId: id, isRevoked: false }, data: { isRevoked: true } }),
+      // Unused reset codes must not outlive the new password.
+      this.prisma.otpToken.deleteMany({ where: { identifier: { in: identifiers }, consumedAt: null } }),
+      this.prisma.auditLog.create({
+        data: { userId: actor.id, action: 'ADMIN_RESET_PASSWORD', entity: 'User', entityId: id, ipAddress: ipAddress ?? null },
+      }),
+    ]);
+    return { id, passwordChanged: true };
   }
 
   /** Only the super admin may create or manage admins; nobody manages the super admin from the app. */

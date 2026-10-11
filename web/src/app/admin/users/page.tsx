@@ -12,6 +12,7 @@ import { Field, SelectInput } from "@/components/ui/form-field";
 import { ErrorState } from "@/components/ui/query-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { CreateAccountDialog } from "@/components/domain/create-account-dialog";
+import { SetPasswordDialog } from "@/components/domain/set-password-dialog";
 import { useAuth } from "@/features/auth";
 import { useAccounts, useSetAccountStatus, type Account, type AccountStatus } from "@/features/users";
 import { ROLES_CONFIG } from "@/lib/auth/roles";
@@ -35,6 +36,7 @@ export default function UsersPage() {
   const setStatus = useSetAccountStatus();
   const [creating, setCreating] = useState(false);
   const [toggling, setToggling] = useState<Account | null>(null);
+  const [resetting, setResetting] = useState<Account | null>(null);
 
   const list = accounts.data ?? [];
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
@@ -100,9 +102,14 @@ export default function UsersPage() {
       header: "Actions",
       cell: (a) =>
         canManage(a) ? (
-          <Button size="sm" variant={a.status === "ACTIVE" ? "ghost" : "soft"} onClick={() => setToggling(a)}>
-            {a.status === "ACTIVE" ? "Deactivate" : "Activate"}
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <Button size="sm" variant="ghost" icon={<KeyRound className="w-4 h-4" />} aria-label={`Set password for ${a.name}`} onClick={() => setResetting(a)}>
+              Set password
+            </Button>
+            <Button size="sm" variant={a.status === "ACTIVE" ? "ghost" : "soft"} aria-label={`${a.status === "ACTIVE" ? "Deactivate" : "Activate"} ${a.name}`} onClick={() => setToggling(a)}>
+              {a.status === "ACTIVE" ? "Deactivate" : "Activate"}
+            </Button>
+          </div>
         ) : null,
     },
   ];
@@ -169,6 +176,8 @@ export default function UsersPage() {
       </div>
 
       <CreateAccountDialog open={creating} onClose={() => setCreating(false)} allowAdmin={isSuperAdmin} />
+
+      {resetting && <SetPasswordDialog key={resetting.id} account={resetting} onClose={() => setResetting(null)} />}
 
       <ConfirmDialog
         open={toggling !== null}

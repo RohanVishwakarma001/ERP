@@ -196,3 +196,10 @@ export class UpdateUserStatusDto {
   @IsIn(SETTABLE_STATUSES)
   status: (typeof SETTABLE_STATUSES)[number];
 }
+
+export class ResetPasswordByAdminDto {
+  @ApiProperty({ description: 'New password; share it privately. The user can change it later with "Forgot password".' })
+  @IsString()
+  @Matches(STRONG_PASSWORD, { message: STRONG_PASSWORD_MESSAGE })
+  password: string;
+}
