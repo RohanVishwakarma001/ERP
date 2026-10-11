@@ -17,16 +17,16 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-erp.jbitdoon.edu.in/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://erp-f2my.onrender.com/api/v1",
         "EXPO_PUBLIC_USE_MOCK": "false"
       }
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api-erp.jbitdoon.edu.in/api/v1",
+        "EXPO_PUBLIC_API_URL": "https://erp-f2my.onrender.com/api/v1",
         "EXPO_PUBLIC_USE_MOCK": "false"
       }
     }
